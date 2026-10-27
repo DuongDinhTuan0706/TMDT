@@ -1,0 +1,468 @@
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đăng nhập</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: linear-gradient(135deg, #fff2e9, #f4f5f9);
+            color: #252525;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 430px;
+            padding: 36px;
+            background: #fff;
+            border-radius: 18px;
+            box-shadow: 0 12px 45px rgba(0, 0, 0, 0.09);
+        }
+
+        .logo {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 18px;
+            background: #d96535;
+            color: #fff;
+            font-size: 30px;
+            font-weight: bold;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 25px;
+            margin-bottom: 9px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #777;
+            font-size: 14px;
+            margin-bottom: 28px;
+            line-height: 1.5;
+        }
+
+        .field {
+            margin-bottom: 19px;
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        input {
+            width: 100%;
+            height: 46px;
+            padding: 0 13px;
+            border: 1px solid #dedede;
+            border-radius: 9px;
+            outline: none;
+            font-size: 15px;
+            background: #fff;
+        }
+
+        input:focus {
+            border-color: #d96535;
+            box-shadow: 0 0 0 3px rgba(217, 101, 53, 0.12);
+        }
+
+        .password-wrapper {
+            position: relative;
+        }
+
+        .password-wrapper input {
+            padding-right: 65px;
+        }
+
+        .toggle-password {
+            position: absolute;
+            top: 0;
+            right: 0;
+            height: 46px;
+            padding: 0 12px;
+            border: none;
+            background: transparent;
+            color: #d96535;
+            cursor: pointer;
+        }
+
+        .remember-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 22px;
+            font-size: 13px;
+            color: #555;
+        }
+
+        .remember-row input {
+            width: 16px;
+            height: 16px;
+            accent-color: #d96535;
+        }
+
+        .remember-row label {
+            margin: 0;
+            font-weight: normal;
+            cursor: pointer;
+        }
+
+        .submit-btn {
+            width: 100%;
+            height: 47px;
+            border: none;
+            border-radius: 9px;
+            background: #d96535;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .submit-btn:hover {
+            background: #bd5127;
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.65;
+            cursor: not-allowed;
+        }
+
+        .message {
+            display: none;
+            padding: 12px;
+            margin-bottom: 18px;
+            border-radius: 8px;
+            font-size: 13px;
+            line-height: 1.5;
+            overflow-wrap: anywhere;
+        }
+
+        .message.error {
+            display: block;
+            color: #a42323;
+            background: #fff0f0;
+            border: 1px solid #ffd4d4;
+        }
+
+        .message.success {
+            display: block;
+            color: #176b39;
+            background: #edfff3;
+            border: 1px solid #c9f1d7;
+        }
+
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 23px;
+            color: #777;
+            font-size: 13px;
+            text-decoration: none;
+        }
+
+        .back-link:hover {
+            color: #d96535;
+        }
+
+        .footer {
+            margin-top: 23px;
+            text-align: center;
+            font-size: 12px;
+            color: #999;
+        }
+
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 27px 22px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="login-container">
+        <div class="logo">B</div>
+
+        <h1>Đăng nhập </h1>
+       
+
+        <div id="message" class="message" role="alert"></div>
+
+        <form id="loginForm">
+            <div class="field">
+                <label for="username">Tên đăng nhập</label>
+                <input
+                    id="username"
+                    name="username"
+                    type="text"
+                    placeholder="Nhập tên đăng nhập"
+                    autocomplete="username"
+                    required
+                >
+            </div>
+
+            <div class="field">
+                <label for="password">Mật khẩu</label>
+                <div class="password-wrapper">
+                    <input
+                        id="password"
+                        name="password"
+                        type="password"
+                        placeholder="Nhập mật khẩu"
+                        autocomplete="current-password"
+                        required
+                    >
+                    <button
+                        type="button"
+                        id="togglePassword"
+                        class="toggle-password"
+                    >
+                        Hiện
+                    </button>
+                </div>
+            </div>
+
+            <div class="remember-row">
+                <input type="checkbox" id="rememberUsername">
+                <label for="rememberUsername">Ghi nhớ tên đăng nhập</label>
+            </div>
+
+            <button type="submit" id="submitBtn" class="submit-btn">
+                Đăng nhập
+            </button>
+        </form>
+
+        <a class="back-link" href="index.html">
+            ← Quay lại trang chủ
+        </a>
+
+        <div class="footer">
+            BookStore Administration
+        </div>
+    </main>
+
+    <script>
+        'use strict';
+
+        const API_ROOT = (
+            localStorage.getItem('API_ROOT') || 'https://localhost:7091'
+        ).replace(/\/+$/, '');
+
+        const LOGIN_URL = API_ROOT + '/api/KhachHang/login';
+        const LOGOUT_URL = API_ROOT + '/api/KhachHang/logout';
+
+        const form = document.getElementById('loginForm');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const submitBtn = document.getElementById('submitBtn');
+        const message = document.getElementById('message');
+        const rememberUsername = document.getElementById('rememberUsername');
+
+        function showMessage(text, type = 'error') {
+            message.textContent = text;
+            message.className = 'message ' + type;
+        }
+
+        function getValue(obj, ...keys) {
+            for (const key of keys) {
+                if (obj && obj[key] !== undefined && obj[key] !== null) {
+                    return obj[key];
+                }
+            }
+
+            return null;
+        }
+
+        function getResponseData(body) {
+            return getValue(body, 'data', 'Data') ?? body;
+        }
+
+        function getRole(user) {
+            return getValue(user, 'role', 'Role');
+        }
+
+        function getCustomerName(user) {
+            return getValue(user, 'tenKhachHang', 'TenKhachHang') || '';
+        }
+
+        function clearAdminSession() {
+            sessionStorage.removeItem('bookstore-admin-user');
+        }
+
+        document.getElementById('togglePassword').addEventListener('click', () => {
+            const isPassword = passwordInput.type === 'password';
+            passwordInput.type = isPassword ? 'text' : 'password';
+            document.getElementById('togglePassword').textContent =
+                isPassword ? 'Ẩn' : 'Hiện';
+        });
+
+        const savedUsername = localStorage.getItem('bookstore-admin-username');
+
+        if (savedUsername) {
+            usernameInput.value = savedUsername;
+            rememberUsername.checked = true;
+        }
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value;
+
+            if (!username || !password) {
+                showMessage('Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Đang đăng nhập...';
+            message.className = 'message';
+            clearAdminSession();
+
+            try {
+                const response = await fetch(LOGIN_URL, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        UserName: username,
+                        Password: password
+                    })
+                });
+
+                const raw = await response.text();
+                let body;
+
+                try {
+                    body = raw ? JSON.parse(raw) : {};
+                } catch {
+                    body = {};
+                }
+
+                if (!response.ok) {
+                    throw new Error(
+                        getValue(body, 'message', 'Message', 'title') ||
+                        `Đăng nhập thất bại (HTTP ${response.status}).`
+                    );
+                }
+
+                if (
+                    getValue(body, 'success', 'Success') === false
+                ) {
+                    throw new Error(
+                        getValue(body, 'message', 'Message') ||
+                        'Tên đăng nhập hoặc mật khẩu không đúng.'
+                    );
+                }
+
+
+
+const user = getResponseData(body);
+const role = String(getRole(user) || '').toLowerCase();
+
+if (!user || typeof user !== 'object') {
+    throw new Error('API không trả về thông tin tài khoản.');
+}
+
+// Lưu thông tin người dùng cho toàn bộ hệ thống (cả api-store.js và trang admin)
+sessionStorage.setItem('apiq-user', JSON.stringify(user));
+localStorage.setItem('bookstore-user', JSON.stringify(user));
+
+// Đồng bộ giỏ hàng vãng lai vào tài khoản nếu có
+const customerId = user.maKhachHang ?? user.MaKhachHang ?? user.id;
+if (customerId) {
+    try {
+        await fetch(`${API_ROOT}/api/cart/guest/to-db/${customerId}`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+        sessionStorage.removeItem('apiq-guest-cart');
+    } catch (e) {
+        console.warn('Lỗi đồng bộ giỏ hàng vãng lai:', e);
+    }
+}
+
+if (role === 'admin') {
+    sessionStorage.setItem(
+        'bookstore-admin-user',
+        JSON.stringify(user)
+    );
+    window.location.href = 'admin.html';
+} else {
+    sessionStorage.removeItem('bookstore-admin-user');
+    window.location.href = 'shop.html';
+}
+
+
+            } catch (error) {
+                console.error('Lỗi đăng nhập:', error);
+
+                let errorMessage = error.message ||
+                    'Đã xảy ra lỗi khi đăng nhập.';
+
+                if (error instanceof TypeError) {
+                    errorMessage =
+                        'Không kết nối được API. Hãy kiểm tra API có đang chạy, chứng chỉ HTTPS và CORS.';
+                }
+
+                showMessage(errorMessage);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Đăng nhập';
+            }
+        });
+
+        const savedUser = localStorage.getItem('bookstore-user');
+
+let currentUser = null;
+
+try {
+    currentUser = savedUser ? JSON.parse(savedUser) : null;
+} catch {
+    currentUser = null;
+}
+
+if (currentUser) {
+    console.log('Thông tin tài khoản từ API:', currentUser);
+
+    const maKhachHang =
+        currentUser.maKhachHang ??
+        currentUser.MaKhachHang;
+
+    const tenKhachHang =
+        currentUser.tenKhachHang ??
+        currentUser.TenKhachHang ??
+        currentUser.userName ??
+        currentUser.UserName;
+
+    console.log('Mã khách hàng:', maKhachHang);
+    console.log('Tên khách hàng:', tenKhachHang);
+}
+    </script>
+</body>
+</html>
