@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+
+    <head>
+        <meta charset="utf-8">
+        <title>Electro - Electronics Website Template</title>
+        <meta content="width=device-width, initial-scale=1.0" name="viewport">
+        <meta content="" name="keywords">
+        <meta content="" name="description">
+
+        <!-- Google Web Fonts -->
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet"> 
+
+        <!-- Icon Font Stylesheet -->
+        <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.15.4/css/all.css"/>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.4.1/font/bootstrap-icons.css" rel="stylesheet">
+
+        <!-- Libraries Stylesheet -->
+        <link href="lib/animate/animate.min.css" rel="stylesheet">
+        <link href="lib/owlcarousel/assets/owl.carousel.min.css" rel="stylesheet">
+
+
+        <!-- Customized Bootstrap Stylesheet -->
+        <link href="css/bootstrap.min.css" rel="stylesheet">
+
+        <!-- Template Stylesheet -->
+        <link href="css/style.css" rel="stylesheet">
+    </head>
+
+    <body>
+
+        <!-- Spinner Start -->
+        <div id="spinner" class="show bg-white position-fixed translate-middle w-100 vh-100 top-50 start-50 d-flex align-items-center justify-content-center">
+            <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status">
+                <span class="sr-only">Loading...</span>
+            </div>
+        </div>
+        <!-- Spinner End -->
+
+
+        <div class="container-fluid px-5 py-4 d-none d-lg-block">
+            <div class="row gx-0 align-items-center">
+
+                <!-- Logo bên trái -->
+                <div class="col-md-4 col-lg-3 text-start">
+                    <a href="index.html" class="navbar-brand p-0">
+                        <h1 class="display-5 text-primary m-0">
+                            <i class="fas fa-shopping-bag text-secondary me-2"></i>BookStore
+                        </h1>
+                    </a>
+                </div>
+
+                <!-- Các biểu tượng bên phải -->
+                <div class="col-md-8 col-lg-9">
+                    <div class="d-flex align-items-center justify-content-end w-100">
+
+                        <a href="#" class="text-muted d-flex align-items-center justify-content-center me-3">
+                            <span class="rounded-circle btn-md-square border">
+                                <i class="fas fa-random"></i>
+                            </span>
+                        </a>
+
+                        <a href="favorites.html" class="text-muted d-flex align-items-center justify-content-center me-3">
+                            <span class="rounded-circle btn-md-square border">
+                                <i class="fas fa-heart"></i>
+                            </span>
+                        </a>
+
+                        <a href="cart.html" class="text-muted d-flex align-items-center justify-content-center">
+                            <span class="rounded-circle btn-md-square border">
+                                <i class="fas fa-shopping-cart"></i>
+                            </span>
+                            <span class="text-dark ms-2"></span>
+                        </a>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Topbar End -->
+
+        <!-- Navbar & Hero Start -->
+        <div class="container-fluid nav-bar p-0">
+            <div class="row gx-0 bg-primary px-5 align-items-center">
+                <div class="col-12 col-lg-9">
+                    <nav class="navbar navbar-expand-lg navbar-light bg-primary ">
+                        <a href="" class="navbar-brand d-block d-lg-none">
+                            <h1 class="display-5 text-secondary m-0"><i class="fas fa-shopping-bag text-white me-2"></i>Electro</h1>
+                            <!-- <img src="img/logo.png" alt="Logo"> -->
+                        </a>
+                        <button class="navbar-toggler ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse">
+                            <span class="fa fa-bars fa-1x"></span>
+                        </button>
+                        <div class="collapse navbar-collapse" id="navbarCollapse">
+                            <div class="navbar-nav ms-auto py-0">
+                                <a href="index.html" class="nav-item nav-link">Trang chủ</a>
+                                <a href="shop.html" class="nav-item nav-link active">Cửa hàng</a>
+                                <a href="cart.html" class="nav-item nav-link">Giỏ hàng</a>
+                                <a href="checkout.html" class="nav-item nav-link">Đặt Hàng</a>
+                                <a href="contact.html" class="nav-item nav-link me-2">Liên hệ</a>
+                            
+                            </div>
+                    </nav>
+                </div>
+            </div>
+        </div>
+        <!-- Navbar & Hero End -->
+
+        <!-- Products Offer Start -->
+            <div class="container-fluid bg-light py-4">
+                <div class="container-fluid px-4">
+                    <div class="row g-4">
+
+                        <!-- Banner 1 -->
+                        <div class="col-lg-6 wow fadeInLeft" data-wow-delay="0.2s">
+                            <a href="shop.html"
+                            class="offer-banner d-flex align-items-stretch border bg-white rounded">
+
+                                <!-- Nội dung bên trái -->
+                                <div class="offer-content">
+                                    <p class="text-muted mb-3">
+                                        Mừng Tháng Doanh Nhân
+                                    </p>
+
+                                    <h3 class="text-primary">Sách Kinh Tế</h3>
+
+                                    <h1 class="offer-discount text-secondary mb-0">
+                                        40%
+                                        <span class="text-primary fw-normal">Off</span>
+                                    </h1>
+                                </div>
+
+                                <!-- Ảnh bên phải -->
+                                <div class="offer-image">
+                                    <img src="image/banner1.png"
+                                        alt="Sách trong thư viện">
+                                </div>
+
+                            </a>
+                        </div>
+
+                        <!-- Banner 2 -->
+                        <div class="col-lg-6 wow fadeInRight" data-wow-delay="0.3s">
+                            <a href="shop.html"
+                            class="offer-banner d-flex align-items-stretch border bg-white rounded">
+
+                                <!-- Nội dung bên trái -->
+                                <div class="offer-content">
+                                    <p class="text-muted mb-3">
+                                        Tủ Sách Kinh Dị
+                                    </p>
+
+                                    <h3 class="text-primary">Sách Kinh Dị</h3>
+
+                                    <h1 class="offer-discount text-secondary mb-0">
+                                        20%
+                                        <span class="text-primary fw-normal">Off</span>
+                                    </h1>
+                                </div>
+
+                                <!-- Ảnh bên phải -->
+                                <div class="offer-image">
+                                    <img src="image/kinhdi.png"
+                                        alt="Sách trong thư viện">
+                                </div>
+
+                            </a>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+            <!-- Products Offer End -->
+
+
+        <!-- Shop Page Start -->
+        <div class="container-fluid shop py-5">
+            <div class="container py-5">
+                <div class="row g-4">
+                    <div class="col-lg-3 wow fadeInUp" data-wow-delay="0.1s">
+                        
+                        <div class="product-categories mb-4">
+                            <h4>Thể loại sách</h4>
+
+                            <ul class="list-unstyled" id="api-book-categories">
+                                <li>
+                                    <div class="categories-item">
+                                        <a href="shop.html"
+                                        class="text-dark"
+                                        data-category="">
+                                            <i class="fas fa-book text-secondary me-2"></i>
+                                            Tất cả sách
+                                        </a>
+                                        <span></span>
+                                    </div>
+                                </li>
+                            </ul>
+                        </div>
+
+                        
+                            <div class="price mb-4">
+                                <h4 class="mb-2">Lọc theo giá</h4>
+
+                                <input
+                                    type="range"
+                                    class="form-range w-100"
+                                    id="rangeInput"
+                                    name="rangeInput"
+                                    min="0"
+                                    max="500000"
+                                    step="10000"
+                                    value="500000"
+                                >
+
+                                <div class="d-flex justify-content-between">
+                                    <span>0đ</span>
+                                    <output id="amount" for="rangeInput">500.000đ</output>
+                                </div>
+
+                                <button type="button" id="reset-price-filter"
+                                        class="btn btn-sm btn-outline-secondary mt-2">
+                                    Bỏ lọc giá
+                                </button>
+                            </div>
+
+                        
+                        
+                        <a href="#">
+                            <div class="position-relative">
+                                <img src="image/Naruto_Resize.png" class="img-fluid w-100 rounded" alt="Image">
+                                <div class="text-center position-absolute d-flex flex-column align-items-center justify-content-center rounded p-4" style="width: 100%; height: 100%; top: 0; right: 0; background: rgba(242, 139, 0, 0.3);">
+                                    <h5 class="display-6 text-primary">SALE</h5>
+                                    <h4 class="text-secondary">Get UP To 50% Off</h4>
+                                    <a href="shop.html" class="btn btn-primary rounded-pill px-4">Shop Now</a>
+                                </div>
+                            </div>
+                        </a>
+                        
+                    </div>
+                    <div class="col-lg-9 wow fadeInUp" data-wow-delay="0.1s">
+                    
+                        <div class="row g-4">
+                            <div class="col-xl-7">
+                                <div class="input-group w-100 mx-auto d-flex">
+                                    <input type="search"
+                                        id="api-book-search"
+                                        class="form-control p-3"
+                                        placeholder="Nhập tên sách cần tìm..."
+                                        aria-label="Tìm sách theo tên">
+                                    <span id="search-icon-1" class="input-group-text p-3"><i class="fa fa-search"></i></span>
+                                </div>
+                            </div>
+                            <div class="col-xl-3 text-end">
+                                <div class="bg-light ps-3 py-3 rounded d-flex justify-content-between">
+                                    <label for="book-sort">Sắp xếp:</label>
+
+                                    <select id="book-sort" name="book-sort"
+                                            class="border-0 form-select-sm bg-light me-3">
+
+                                        <option value="default">Mặc định</option>
+                                        <option value="name-asc">Tên sách A - Z</option>
+                                        <option value="name-desc">Tên sách Z - A</option>
+                                        <option value="price-asc">Giá thấp đến cao</option>
+                                        <option value="price-desc">Giá cao đến thấp</option>
+                                        <option value="quantity-desc">Số lượng nhiều đến ít</option>
+                                        <option value="year-desc">Năm xuất bản mới nhất</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-lg-4 col-xl-2">
+                                 <ul class="nav nav-pills d-inline-flex text-center py-2 px-2 rounded bg-light mb-4">
+                                    <li class="nav-item me-4">
+                                        <a class="bg-light active" href="#" id="book-grid-view">
+                                            <i class="fas fa-th fa-3x text-primary"></i>
+                                        </a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="bg-light" href="#" id="book-list-view">
+                                            <i class="fas fa-bars fa-3x text-primary"></i>
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="tab-content">
+                            <div id="tab-5" class="tab-pane fade show p-0 active">
+                                <div class="row g-4 product">
+                                    <div class="container-fluid product py-5">
+                                        
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Shop Page End -->
+
+        <!-- Product Banner Start -->
+        <div class="container-fluid py-5">
+            <div class="container">
+                <div class="row g-4">
+                    <div class="col-lg-6 wow fadeInLeft" data-wow-delay="0.1s">
+                        <a href="#">
+                            <div class="bg-primary rounded position-relative">
+                                <img src="image/ThuVien.jpg" class="img-fluid w-100 rounded" alt="">
+                                <div class="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column justify-content-center rounded p-4" style="background: rgba(255, 255, 255, 0.5);">
+                                    <h3 class="display-5 text-primary">Khám phá thế giới nội tâm <br> <span>Qua những trang sách</span></h3>
+                                    <p class="fs-4 text-muted"></p>
+                                    <a href="shop.html" class="btn btn-primary rounded-pill align-self-start py-2 px-4">Shop Now</a>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+                    <div class="col-lg-6 wow fadeInRight" data-wow-delay="0.2s">
+                        <a href="#">
+                            <div class="text-center bg-primary rounded position-relative">
+                                <img src="image/ThuVien.jpg" class="img-fluid w-100" alt="">
+                                <div class="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column justify-content-center rounded p-4" style="background: rgba(242, 139, 0, 0.5);">
+                                    <h2 class="display-2 text-secondary">SALE</h2>
+                                    <h4 class="display-5 text-white mb-4">Get UP To 50% Off</h4>
+                                    <a href="shop.html" class="btn btn-secondary rounded-pill align-self-center py-2 px-4">Shop Now</a>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Product Banner End -->
+
+          <!-- Footer Start -->
+        <div class="container-fluid footer py-5 wow fadeIn" data-wow-delay="0.2s">
+            <div class="container py-5">
+                <div class="row g-4 rounded mb-5" style="background: rgba(255, 255, 255, .03);">
+                    <div class="col-md-6 col-lg-6 col-xl-3">
+                        <div class="rounded p-4">
+                            <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center mb-4" style="width: 70px; height: 70px;">
+                                <i class="fas fa-map-marker-alt fa-2x text-primary"></i>
+                            </div>
+                            <div>
+                                 <iframe class="rounded w-100" 
+                                style="height: 100%;" src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d777.1748616097559!2d106.86914354915587!3d10.984803664528533!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3174ddb237f9dd59%3A0x3ff1538c511f05d7!2zVHLGsOG7nW5nIMSQ4bqhaSBI4buNYyBDw7RuZyBOZ2jhu4cgxJDhu5NuZyBOYWk!5e0!3m2!1svi!2s!4v1793100616523!5m2!1svi!2s" width="600" height="450" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" 
+                                loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-lg-6 col-xl-3">
+                        <div class="rounded p-4">
+                            <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center mb-4" style="width: 70px; height: 70px;">
+                                <i class="fas fa-envelope fa-2x text-primary"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-white">Mail Us</h4>
+                                <p class="mb-2">Nhom8@gmail.com</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-lg-6 col-xl-3">
+                        <div class="rounded p-4">
+                            <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center mb-4" style="width: 70px; height: 70px;">
+                                <i class="fa fa-phone-alt fa-2x text-primary"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-white">Telephone</h4>
+                                <p class="mb-2">0986 39 7733</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-lg-6 col-xl-3">
+                        <div class="rounded p-4">
+                            <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center mb-4" style="width: 70px; height: 70px;">
+                                <i class="fab fa-firefox-browser fa-2x text-primary"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-white">https://dntu.edu.vn/</h4>
+                                <p class="mb-2">0904 39 7733</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-5">
+                    <div class="col-md-6 col-lg-6 col-xl-3">
+                        <div class="footer-item d-flex flex-column">
+                            <div class="footer-item">
+                                <h4 class="text-primary mb-4">Nhóm 8</h4>
+                                <p class="mb-3">Thành Viên:</p>
+                                <p>Dương Đình Tuấn - 1923050727</p>
+                                <p>Nguyễn Mạnh Cường - 1923050985</p>
+                                <p>Phạm Quang Vinh - 1923050676</p>
+                                
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Footer End -->
+
+        
+        <!-- Copyright Start -->
+        <div class="container-fluid copyright py-4">
+            <div class="container">
+                <div class="row g-4 align-items-center">
+                    <div class="col-md-6 text-center text-md-start mb-md-0">
+                        <span class="text-white"><a href="#" class="border-bottom text-white"><i class="fas fa-copyright text-light me-2"></i>BookStore</a>, Nhóm 8.</span>
+                    </div>
+                    <div class="col-md-6 text-center text-md-end text-white">
+                        
+                        <!--/*** The author’s attribution link must remain intact in the template. ***/-->
+                        <!--/*** If you wish to remove this credit link, please purchase the Pro Version . ***/-->
+                        Designed By <a class="border-bottom text-white" href="https://htmlcodex.com">HTML Codex</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Copyright End -->
+        <!-- Back to Top -->
+        <a href="#" class="btn btn-primary btn-lg-square back-to-top"><i class="fa fa-arrow-up"></i></a>   
+
+        
+    <!-- JavaScript Libraries -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="lib/wow/wow.min.js"></script>
+    <script src="lib/owlcarousel/owl.carousel.min.js"></script>
+    
+
+    <!-- Template Javascript -->
+    <script src="js/main.js"></script>
+        <script src="js/api-store.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Quản trị BookStore</title>
+  <link rel="stylesheet" href="css/admin.css">\n  <style>
+    .admin-chat-layout{display:grid;grid-template-columns:minmax(250px,320px) minmax(0,1fr);gap:18px;min-height:560px}
+    .admin-chat-contacts,.admin-chat-conversation{min-width:0;display:flex;flex-direction:column;overflow:hidden}
+    .admin-chat-panel-heading,.admin-chat-conversation-header{padding:18px;border-bottom:1px solid #e9edf3}
+    .admin-chat-panel-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .admin-chat-panel-heading h3,.admin-chat-conversation-header h3{margin:0;font-size:16px}
+    .admin-chat-panel-heading .muted,.admin-chat-conversation-header .muted{margin:5px 0 0;font-size:12px}
+    .admin-chat-search{padding:12px;border-bottom:1px solid #e9edf3}
+    .admin-chat-search input{width:100%;padding:10px 12px;border:1px solid #dce2ea;border-radius:8px}
+    .admin-chat-contact-list{overflow:auto;max-height:620px}
+    .admin-chat-contact{width:100%;display:flex;gap:11px;align-items:center;text-align:left;padding:14px;border:0;border-bottom:1px solid #eef1f5;background:#fff;cursor:pointer}
+    .admin-chat-contact:hover,.admin-chat-contact.active{background:#f0f5ff}
+    .admin-chat-avatar{width:40px;height:40px;flex:0 0 40px;border-radius:50%;display:grid;place-items:center;background:#e6edff;color:#3157b7;font-weight:700}
+    .admin-chat-contact-text{min-width:0;flex:1}
+    .admin-chat-contact-name{display:block;font-weight:600;color:#222;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .admin-chat-contact-preview{display:block;font-size:12px;color:#788292;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .admin-chat-contact-time{font-size:11px;color:#8b94a3;white-space:nowrap}
+    .admin-chat-messages{flex:1;min-height:350px;max-height:520px;overflow:auto;padding:20px;background:#f8faff;display:flex;flex-direction:column;gap:12px}
+    .admin-chat-message{max-width:78%;padding:10px 13px;border-radius:12px;background:#fff;border:1px solid #e6eaf1;align-self:flex-start;overflow-wrap:anywhere}
+    .admin-chat-message.mine{align-self:flex-end;background:#e7efff;border-color:#d5e2ff}
+    .admin-chat-message-sender{font-size:11px;font-weight:700;color:#3157b7;margin-bottom:4px}
+    .admin-chat-message-body{white-space:pre-wrap}
+    .admin-chat-message-time{display:block;font-size:10px;color:#7c8797;margin-top:6px;text-align:right}
+    .admin-chat-send-form{display:flex;gap:10px;padding:14px;border-top:1px solid #e9edf3}
+    .admin-chat-send-form input{flex:1;min-width:0;border:1px solid #dce2ea;border-radius:8px;padding:11px 12px}
+    .admin-chat-send-form button{flex:0 0 auto}
+    .admin-chat-empty{padding:24px;text-align:center;color:#8791a0;font-size:13px}
+    @media(max-width:800px){.admin-chat-layout{grid-template-columns:1fr}.admin-chat-contact-list{max-height:260px}.admin-chat-messages{min-height:300px}}
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="index.html"><span class="brand-mark">B</span><span><b>BookStore</b><small>ADMIN CONSOLE</small></span></a>
+      <div class="side-label">QUẢN LÝ CỬA HÀNG</div>
+      <nav id="mainNav">
+        <button class="nav-item active" data-view="dashboard"><span>▦</span>Tổng quan</button>
+        <button class="nav-item" data-view="books"><span>▤</span>Sách</button>
+        <button class="nav-item" data-view="genres"><span>◈</span>Thể loại</button>
+        <button class="nav-item" data-view="authors"><span>✎</span>Tác giả</button>
+        <button class="nav-item" data-view="publishers"><span>▣</span>Nhà xuất bản</button>
+        <button class="nav-item" data-view="customers"><span>♙</span>Khách hàng</button>
+        <button class="nav-item" data-view="orders"><span>▧</span>Hóa đơn</button>
+        <button class="nav-item" data-view="messages"><span>✉</span>Tin nhắn</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="admin-profile"><div class="avatar">A</div><div><b id="adminName">Quản trị viên</b><small>Administrator</small></div></div>
+        <button id="logoutBtn" class="logout-btn">↪ Đăng xuất</button>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <button class="mobile-menu" id="mobileMenu" aria-label="Mở menu">☰</button>
+        <div><span class="eyebrow">BOOKSTORE / ADMIN</span><h1 id="pageTitle">Tổng quan</h1></div>
+        <div class="topbar-right"><span class="status-dot"></span><span>Đang kết nối API</span><button class="icon-button" id="refreshBtn" title="Tải lại dữ liệu">↻</button></div>
+      </header>
+      <section class="content">
+        <div id="notice" class="notice" hidden></div>
+
+        <section class="view active" id="view-dashboard">
+          <div class="welcome-row"><div><h2>Xin chào, <span id="welcomeName">Admin</span> 👋</h2><p class="muted">Đây là tình hình hiện tại của cửa hàng sách.</p></div><button class="btn btn-outline" id="dashboardRefresh">↻ Làm mới dữ liệu</button></div>
+          <div class="stats-grid">
+            <article class="stat-card"><div class="stat-icon purple">▤</div><p>Tổng số sách</p><strong id="statBooks">—</strong><small>Danh mục sách trong API</small></article>
+            <article class="stat-card"><div class="stat-icon blue">♙</div><p>Khách hàng</p><strong id="statCustomers">—</strong><small>Tài khoản được API trả về</small></article>
+            <article class="stat-card"><div class="stat-icon orange">▧</div><p>Hóa đơn</p><strong id="statOrders">—</strong><small>Tổng hóa đơn trong hệ thống</small></article>
+            <article class="stat-card"><div class="stat-icon green">₫</div><p>Đã thanh toán</p><strong id="statPaid">—</strong><small>Số hóa đơn đã thanh toán</small></article>
+          </div>
+          <div class="panel dashboard-panel"><div class="panel-heading"><div><h3>Thao tác nhanh</h3><p class="muted">Chọn một mục để bắt đầu quản lý dữ liệu.</p></div></div><div class="quick-actions">
+            <button data-goto="books" class="quick-card"><span>＋</span><b>Quản lý sách</b><small>Thêm, sửa và xóa sách</small></button>
+            <button data-goto="genres" class="quick-card"><span>◈</span><b>Thể loại</b><small>Quản lý danh mục thể loại</small></button>
+            <button data-goto="customers" class="quick-card"><span>♙</span><b>Khách hàng</b><small>Xem tài khoản khách hàng</small></button>
+            <button data-goto="orders" class="quick-card"><span>▧</span><b>Hóa đơn</b><small>Kiểm tra và cập nhật thanh toán</small></button>
+          </div></div>
+          <div class="panel"><div class="panel-heading"><div><h3>Hóa đơn gần đây</h3><p class="muted">Dữ liệu được lấy trực tiếp từ API.</p></div><button class="btn btn-sm btn-outline" data-goto="orders">Xem tất cả</button></div><div class="table-wrap"><table><thead><tr><th>Mã hóa đơn</th><th>Ngày lập</th><th>Tổng tiền</th><th>Thanh toán</th><th></th></tr></thead><tbody id="recentOrders"><tr><td colspan="5" class="empty-cell">Đang tải dữ liệu...</td></tr></tbody></table></div></div>
+        </section>
+
+        <section class="view" id="view-books">
+          <div class="toolbar"><div class="search-box"><span>⌕</span><input id="bookSearch" placeholder="Tìm theo tên sách, tác giả..."></div><button class="btn btn-primary" id="addBookBtn">＋ Thêm sách</button></div>
+          <div class="panel"><div class="table-wrap"><table><thead><tr><th>Sách</th><th>Thể loại</th><th>Tác giả</th><th>Nhà xuất bản</th><th>Giá bán</th><th>Thao tác</th></tr></thead><tbody id="booksTable"><tr><td colspan="6" class="empty-cell">Đang tải...</td></tr></tbody></table></div></div>
+        </section>
+
+        <section class="view" id="view-genres">
+          <div class="toolbar"><div><h2>Danh sách thể loại</h2><p class="muted">Thêm, sửa hoặc xóa thể loại sách.</p></div><button class="btn btn-primary" id="addGenreBtn">＋ Thêm thể loại</button></div>
+          <div class="panel"><div class="table-wrap"><table><thead><tr><th>Mã</th><th>Tên thể loại</th><th>Thao tác</th></tr></thead><tbody id="genresTable"><tr><td colspan="3" class="empty-cell">Đang tải...</td></tr></tbody></table></div></div>
+        </section>
+
+        <section class="view" id="view-authors">
+          <div class="toolbar"><div><h2>Danh sách tác giả</h2><p class="muted">Quản lý thông tin tác giả.</p></div><button class="btn btn-primary" id="addAuthorBtn">＋ Thêm tác giả</button></div>
+          <div class="panel"><div class="table-wrap"><table><thead><tr><th>Mã</th><th>Tên tác giả</th><th>Thao tác</th></tr></thead><tbody id="authorsTable"><tr><td colspan="3" class="empty-cell">Đang tải...</td></tr></tbody></table></div></div>
+        </section>
+
+        <section class="view" id="view-publishers">
+          <div class="toolbar"><div><h2>Danh sách nhà xuất bản</h2><p class="muted">Quản lý tên và địa chỉ nhà xuất bản.</p></div><button class="btn btn-primary" id="addPublisherBtn">＋ Thêm nhà xuất bản</button></div>
+          <div class="panel"><div class="table-wrap"><table><thead><tr><th>Mã</th><th>Tên nhà xuất bản</th><th>Địa chỉ</th><th>Thao tác</th></tr></thead><tbody id="publishersTable"><tr><td colspan="4" class="empty-cell">Đang tải...</td></tr></tbody></table></div></div>
+        </section>
+
+        <section class="view" id="view-customers">
+          <div class="toolbar"><div><h2>Danh sách khách hàng</h2><p class="muted">Thông tin được đọc từ endpoint quản trị khách hàng.</p></div><div class="search-box"><span>⌕</span><input id="customerSearch" placeholder="Tìm tên, email, số điện thoại..."></div></div>
+          <div class="panel"><div class="table-wrap"><table><thead><tr><th>Khách hàng</th><th>Email</th><th>Số điện thoại</th><th>Vai trò</th><th>Xác minh</th><th></th></tr></thead><tbody id="customersTable"><tr><td colspan="6" class="empty-cell">Đang tải...</td></tr></tbody></table></div></div>
+        </section>
+
+        <section class="view" id="view-orders">
+          <div class="toolbar"><div><h2>Quản lý hóa đơn</h2><p class="muted">Xem chi tiết, sửa thông tin nhận hàng và trạng thái thanh toán.</p></div><div class="search-box"><span>⌕</span><input id="orderSearch" placeholder="Tìm mã hóa đơn, tên người nhận..."></div></div>
+          <div class="panel"><div class="table-wrap"><table><thead><tr><th>Mã hóa đơn</th><th>Ngày lập</th><th>Người nhận</th><th>Tổng tiền</th><th>Thanh toán</th><th>Thao tác</th></tr></thead><tbody id="ordersTable"><tr><td colspan="6" class="empty-cell">Đang tải...</td></tr></tbody></table></div></div>
+        </section>
+
+        <section class="view" id="view-messages">
+          <div class="toolbar">
+            <div><h2>Tin nhắn khách hàng</h2><p class="muted">Chọn khách hàng đã trò chuyện để xem lịch sử và phản hồi.</p></div>
+            <button class="btn btn-outline" id="refreshMessagesBtn">↻ Làm mới</button>
+          </div>
+          <div class="admin-chat-layout">
+            <aside class="panel admin-chat-contacts">
+              <div class="admin-chat-panel-heading"><h3>Cuộc trò chuyện</h3><span id="chatContactCount" class="muted">0 khách hàng</span></div>
+              <div class="admin-chat-search"><input id="chatCustomerSearch" type="search" placeholder="Tìm khách hàng..."></div>
+              <div id="adminChatContacts" class="admin-chat-contact-list"><div class="empty-cell">Đang tải cuộc trò chuyện...</div></div>
+            </aside>
+            <section class="panel admin-chat-conversation">
+              <div class="admin-chat-conversation-header">
+                <div><h3 id="adminChatPartnerName">Chọn một khách hàng</h3><p id="adminChatPartnerInfo" class="muted">Lịch sử tin nhắn sẽ hiển thị tại đây.</p></div>
+              </div>
+              <div id="adminChatMessages" class="admin-chat-messages"><div class="empty-cell">Chọn khách hàng ở danh sách bên trái.</div></div>
+              <form id="adminChatSendForm" class="admin-chat-send-form">
+                <input id="adminChatMessageInput" type="text" maxlength="2000" placeholder="Nhập tin nhắn trả lời..." autocomplete="off" disabled>
+                <button id="adminChatSendBtn" type="submit" class="btn btn-primary" disabled>Gửi</button>
+              </form>
+            </section>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="modalBackdrop" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-header"><div><p class="eyebrow">BOOKSTORE ADMIN</p><h2 id="modalTitle">Chỉnh sửa</h2></div><button class="icon-button" id="closeModal" aria-label="Đóng">×</button></div><div id="modalBody"></div></section></div>
+  <script src="js/admin.js"></script>
+</body>
+</html>

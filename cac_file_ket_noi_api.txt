@@ -1,0 +1,4995 @@
+﻿
+
+========== Frontend\js\admin.js ==========
+(() => {
+    'use strict';
+
+    const API_ROOT = (
+        localStorage.getItem('API_ROOT') || 'https://localhost:7091'
+    ).replace(/\/+$/, '');
+
+    const API = API_ROOT + '/api';
+
+    const $ = (selector, root = document) => root.querySelector(selector);
+    const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+
+    const state = {
+        books: [],
+        genres: [],
+        authors: [],
+        publishers: [],
+        customers: [],
+        orders: [],
+        user: null,
+        view: 'dashboard'
+    };
+
+    const get = (obj, ...keys) => {
+        for (const key of keys) {
+            if (obj && obj[key] !== undefined && obj[key] !== null) {
+                return obj[key];
+            }
+        }
+        return '';
+    };
+
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    })[char]);
+
+    const money = value =>
+        Number(value || 0).toLocaleString('vi-VN') + ' â‚«';
+
+    const date = value => {
+        if (!value) return 'â€”';
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime())
+            ? 'â€”'
+            : parsed.toLocaleDateString('vi-VN');
+    };
+
+    function unwrap(value) {
+        let result = value;
+
+        for (let i = 0; i < 5; i++) {
+            if (Array.isArray(result)) return result;
+            if (!result || typeof result !== 'object') return result;
+
+            const next =
+                result.data ??
+                result.Data ??
+                result.result ??
+                result.Result ??
+                result.items ??
+                result.Items;
+
+            if (next === undefined || next === result) break;
+            result = next;
+        }
+
+        return result;
+    }
+
+    function asArray(value, label) {
+        const result = unwrap(value);
+
+        if (Array.isArray(result)) return result;
+
+        if (result == null || result === '') return [];
+
+        throw new Error(
+            `API ${label} tráº£ dá»¯ liá»‡u khÃ´ng pháº£i danh sÃ¡ch. HÃ£y kiá»ƒm tra Response.`
+        );
+    }
+
+    function notice(message, type = 'success') {
+        const el = $('#notice');
+        if (!el) {
+            console[type === 'error' ? 'error' : 'log'](message);
+            return;
+        }
+
+        el.textContent = message;
+        el.className = 'notice ' + type;
+        el.hidden = false;
+
+        window.clearTimeout(notice.timer);
+        notice.timer = window.setTimeout(() => {
+            el.hidden = true;
+        }, 6000);
+    }
+
+    async function request(path, options = {}) {
+        let response;
+
+        try {
+            response = await fetch(API + path, {
+                ...options,
+                credentials: 'include',
+                headers: {
+                    Accept: 'application/json',
+                    ...(options.body !== undefined
+                        ? { 'Content-Type': 'application/json' }
+                        : {}),
+                    ...(options.headers || {})
+                },
+                body: options.body !== undefined
+                    ? (
+                        typeof options.body === 'string'
+                            ? options.body
+                            : JSON.stringify(options.body)
+                    )
+                    : undefined
+            });
+        } catch (error) {
+            console.error('KhÃ´ng káº¿t ná»‘i Ä‘Æ°á»£c API:', API + path, error);
+            throw new Error(
+                `KhÃ´ng káº¿t ná»‘i Ä‘Æ°á»£c API ${API + path}. Kiá»ƒm tra API Ä‘ang cháº¡y, chá»©ng chá»‰ HTTPS vÃ  cáº¥u hÃ¬nh CORS.`
+            );
+        }
+
+        const raw = await response.text();
+        let data = null;
+
+        try {
+            data = raw ? JSON.parse(raw) : null;
+        } catch {
+            data = raw;
+        }
+
+        if (!response.ok) {
+            const detail = typeof data === 'object' && data
+                ? get(data, 'message', 'Message', 'title', 'Title', 'detail', 'Detail')
+                : '';
+
+            if (response.status === 401) {
+                throw new Error(
+                    detail || 'API tráº£ vá» 401: chÆ°a Ä‘Äƒng nháº­p hoáº·c Session Ä‘Ã£ háº¿t háº¡n.'
+                );
+            }
+
+            if (response.status === 403) {
+                throw new Error(
+                    detail || 'API tráº£ vá» 403: Session khÃ´ng cÃ³ quyá»n Admin.'
+                );
+            }
+
+            throw new Error(
+                detail || `API tráº£ vá» HTTP ${response.status} táº¡i ${path}.`
+            );
+        }
+
+        if (
+            data &&
+            typeof data === 'object' &&
+            (
+                data.success === false ||
+                data.Success === false
+            )
+        ) {
+            throw new Error(
+                get(data, 'message', 'Message') || 'API tráº£ vá» lá»—i.'
+            );
+        }
+
+        return data;
+    }
+
+    function requireAdmin() {
+        try {
+            state.user = JSON.parse(
+                sessionStorage.getItem('bookstore-admin-user') || 'null'
+            );
+        } catch {
+            state.user = null;
+        }
+
+        const role = get(state.user, 'role', 'Role');
+
+        if (
+            !state.user ||
+            String(role).toLowerCase() !== 'admin'
+        ) {
+            location.replace('login.html');
+            return false;
+        }
+
+        const name =
+            get(state.user, 'tenKhachHang', 'TenKhachHang') ||
+            get(state.user, 'userName', 'UserName') ||
+            get(state.user, 'tenDangNhap', 'TenDangNhap') ||
+            'Quáº£n trá»‹ viÃªn';
+
+        if ($('#adminName')) $('#adminName').textContent = name;
+        if ($('#welcomeName')) $('#welcomeName').textContent = name;
+
+        return true;
+    }
+        function rowsOrEmpty(list, columns, empty = 'ChÆ°a cÃ³ dá»¯ liá»‡u.') {
+        return list.length
+            ? list.join('')
+            : `<tr><td class="empty-cell" colspan="${columns}">${esc(empty)}</td></tr>`;
+    }
+
+    const act = (type, key, label = 'Sá»­a') => `
+        <div class="action-group">
+            <button class="text-btn" data-action="${type}-edit" data-id="${esc(key)}">${label}</button>
+            <button class="text-btn danger" data-action="${type}-delete" data-id="${esc(key)}">XÃ³a</button>
+        </div>
+    `;
+
+    function renderBooks() {
+        const search = ($('#bookSearch')?.value || '').toLowerCase();
+
+        const list = state.books.filter(book =>
+            [
+                get(book, 'tenSach', 'TenSach'),
+                get(book, 'tenTacGia', 'TenTacGia'),
+                get(book, 'tenTheLoai', 'TenTheLoai')
+            ].join(' ').toLowerCase().includes(search)
+        );
+
+        $('#booksTable').innerHTML = rowsOrEmpty(list.map(book => {
+            const bookId = get(book, 'maSach', 'MaSach');
+            const title = get(book, 'tenSach', 'TenSach') || '(ChÆ°a cÃ³ tÃªn)';
+            const image = get(book, 'anhBia', 'AnhBia');
+
+            const genre = get(book, 'tenTheLoai', 'TenTheLoai') ||
+                get(
+                    state.genres.find(item =>
+                        String(get(item, 'maTheLoai', 'MaTheLoai')) ===
+                        String(get(book, 'maTheLoai', 'MaTheLoai'))
+                    ),
+                    'tenTheLoai',
+                    'TenTheLoai'
+                ) || 'â€”';
+
+            const author = get(book, 'tenTacGia', 'TenTacGia') ||
+                get(
+                    state.authors.find(item =>
+                        String(get(item, 'maTacGia', 'MaTacGia')) ===
+                        String(get(book, 'maTacGia', 'MaTacGia'))
+                    ),
+                    'tenTacGia',
+                    'TenTacGia'
+                ) || 'â€”';
+
+            return `
+                <tr>
+                    <td>
+                        <div class="book-cell">
+                            ${image
+                                ? `<img class="book-cover" src="${esc(image)}" alt="" onerror="this.style.display='none'">`
+                                : '<div class="book-cover"></div>'}
+                            <div>
+                                <b>${esc(title)}</b>
+                                <small>MÃ£ sÃ¡ch: ${esc(bookId)}</small>
+                            </div>
+                        </div>
+                    </td>
+                    <td>${esc(genre)}</td>
+                    <td>${esc(author)}</td>
+                    <td>${esc(get(book, 'tenNhaXuatBan', 'TenNhaXuatBan') || 'â€”')}</td>
+                    <td class="money">${money(get(book, 'gia', 'Gia'))}</td>
+                    <td>${act('book', bookId)}</td>
+                </tr>
+            `;
+        }), 6, 'KhÃ´ng tÃ¬m tháº¥y sÃ¡ch phÃ¹ há»£p.');
+    }
+
+    function renderGenres() {
+        $('#genresTable').innerHTML = rowsOrEmpty(
+            state.genres.map(item => `
+                <tr>
+                    <td>${esc(get(item, 'maTheLoai', 'MaTheLoai'))}</td>
+                    <td><b>${esc(get(item, 'tenTheLoai', 'TenTheLoai'))}</b></td>
+                    <td>${act('genre', get(item, 'maTheLoai', 'MaTheLoai'))}</td>
+                </tr>
+            `),
+            3
+        );
+    }
+
+    function renderAuthors() {
+        $('#authorsTable').innerHTML = rowsOrEmpty(
+            state.authors.map(item => `
+                <tr>
+                    <td>${esc(get(item, 'maTacGia', 'MaTacGia'))}</td>
+                    <td><b>${esc(get(item, 'tenTacGia', 'TenTacGia'))}</b></td>
+                    <td>${act('author', get(item, 'maTacGia', 'MaTacGia'))}</td>
+                </tr>
+            `),
+            3
+        );
+    }
+
+    function renderPublishers() {
+        $('#publishersTable').innerHTML = rowsOrEmpty(
+            state.publishers.map(item => `
+                <tr>
+                    <td>${esc(get(item, 'maNhaXuatBan', 'MaNhaXuatBan'))}</td>
+                    <td><b>${esc(get(item, 'tenNhaXuatBan', 'TenNhaXuatBan'))}</b></td>
+                    <td>${esc(get(item, 'diaChi', 'DiaChi') || 'â€”')}</td>
+                    <td>${act('publisher', get(item, 'maNhaXuatBan', 'MaNhaXuatBan'))}</td>
+                </tr>
+            `),
+            4
+        );
+    }
+        function renderCustomers() {
+        const search = ($('#customerSearch')?.value || '').toLowerCase();
+
+        const list = state.customers.filter(item =>
+            [
+                get(item, 'tenKhachHang', 'TenKhachHang'),
+                get(item, 'tenDangNhap', 'TenDangNhap'),
+                get(item, 'email', 'Email'),
+                get(item, 'soDienThoai', 'SoDienThoai')
+            ].join(' ').toLowerCase().includes(search)
+        );
+
+        $('#customersTable').innerHTML = rowsOrEmpty(
+            list.map(item => {
+                const name = get(item, 'tenKhachHang', 'TenKhachHang') || 'â€”';
+                const role = get(item, 'role', 'Role') || 'User';
+                const verified = get(item, 'isVerified', 'IsVerified');
+
+                return `
+                    <tr>
+                        <td>
+                            <div class="book-cell">
+                                <div class="avatar">${esc(name.slice(0, 1).toUpperCase())}</div>
+                                <div>
+                                    <b>${esc(name)}</b>
+                                    <small>@${esc(get(item, 'tenDangNhap', 'TenDangNhap') || 'â€”')}</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td>${esc(get(item, 'email', 'Email') || 'â€”')}</td>
+                        <td>${esc(get(item, 'soDienThoai', 'SoDienThoai') || 'â€”')}</td>
+                        <td>
+                            <span class="pill ${String(role).toLowerCase() === 'admin' ? 'paid' : 'unpaid'}">
+                                ${esc(role)}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="pill ${verified ? 'verified' : 'unverified'}">
+                                ${verified ? 'ÄÃ£ xÃ¡c minh' : 'ChÆ°a xÃ¡c minh'}
+                            </span>
+                        </td>
+                        <td>
+                            <button class="text-btn" data-action="customer-detail"
+                                data-id="${esc(get(item, 'maKhachHang', 'MaKhachHang'))}">
+                                Chi tiáº¿t
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }),
+            6,
+            'KhÃ´ng tÃ¬m tháº¥y khÃ¡ch hÃ ng.'
+        );
+    }
+
+    function renderOrders() {
+        const search = ($('#orderSearch')?.value || '').toLowerCase();
+
+        const list = state.orders.filter(item =>
+            [
+                get(item, 'maHoaDon', 'MaHoaDon'),
+                get(item, 'tenNguoiNhan', 'TenNguoiNhan'),
+                get(item, 'diaChi', 'DiaChi')
+            ].join(' ').toLowerCase().includes(search)
+        );
+
+        $('#ordersTable').innerHTML = rowsOrEmpty(
+            list.map(item => {
+                const orderId = get(item, 'maHoaDon', 'MaHoaDon');
+                const paid = Boolean(get(item, 'trangThaiThanhToan', 'TrangThaiThanhToan'));
+
+                return `
+                    <tr>
+                        <td><b>#${esc(orderId)}</b></td>
+                        <td>${date(get(item, 'ngayLap', 'NgayLap'))}</td>
+                        <td>
+                            ${esc(get(item, 'tenNguoiNhan', 'TenNguoiNhan') || 'â€”')}
+                            <small style="display:block;color:#969aa5;margin-top:4px">
+                                ${esc(get(item, 'soDienThoai', 'SoDienThoai') || '')}
+                            </small>
+                        </td>
+                        <td class="money">${money(get(item, 'tongTien', 'TongTien'))}</td>
+                        <td>
+                            <span class="pill ${paid ? 'paid' : 'unpaid'}">
+                                ${paid ? 'ÄÃ£ thanh toÃ¡n' : 'ChÆ°a thanh toÃ¡n'}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="action-group">
+                                <button class="text-btn" data-action="order-detail" data-id="${esc(orderId)}">Chi tiáº¿t</button>
+                                <button class="text-btn" data-action="order-edit" data-id="${esc(orderId)}">Sá»­a</button>
+                                <button class="text-btn" data-action="order-toggle"
+                                    data-id="${esc(orderId)}" data-paid="${paid}">
+                                    ${paid ? 'Há»§y xÃ¡c nháº­n' : 'XÃ¡c nháº­n TT'}
+                                </button>
+                                <button class="text-btn danger" data-action="order-delete" data-id="${esc(orderId)}">XÃ³a</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }),
+            6,
+            'ChÆ°a cÃ³ hÃ³a Ä‘Æ¡n.'
+        );
+    }
+
+    function renderRecentOrders() {
+        const list = [...state.orders]
+            .sort((a, b) =>
+                new Date(get(b, 'ngayLap', 'NgayLap') || 0) -
+                new Date(get(a, 'ngayLap', 'NgayLap') || 0)
+            )
+            .slice(0, 5);
+
+        $('#recentOrders').innerHTML = rowsOrEmpty(
+            list.map(item => {
+                const orderId = get(item, 'maHoaDon', 'MaHoaDon');
+                const paid = Boolean(get(item, 'trangThaiThanhToan', 'TrangThaiThanhToan'));
+
+                return `
+                    <tr>
+                        <td><b>#${esc(orderId)}</b></td>
+                        <td>${date(get(item, 'ngayLap', 'NgayLap'))}</td>
+                        <td class="money">${money(get(item, 'tongTien', 'TongTien'))}</td>
+                        <td>
+                            <span class="pill ${paid ? 'paid' : 'unpaid'}">
+                                ${paid ? 'ÄÃ£ thanh toÃ¡n' : 'ChÆ°a thanh toÃ¡n'}
+                            </span>
+                        </td>
+                        <td>
+                            <button class="text-btn" data-action="order-detail" data-id="${esc(orderId)}">
+                                Chi tiáº¿t
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }),
+            5,
+            'ChÆ°a cÃ³ hÃ³a Ä‘Æ¡n.'
+        );
+    }
+
+    async function loadBooks() {
+        state.books = asArray(await request('/sach'), 'sÃ¡ch');
+        renderBooks();
+    }
+
+    async function loadGenres() {
+        state.genres = asArray(await request('/the-loai'), 'thá»ƒ loáº¡i');
+        renderGenres();
+    }
+
+    async function loadAuthors() {
+        state.authors = asArray(await request('/tac-gia'), 'tÃ¡c giáº£');
+        renderAuthors();
+    }
+
+    async function loadPublishers() {
+        state.publishers = asArray(await request('/nha-xuat-ban'), 'nhÃ  xuáº¥t báº£n');
+        renderPublishers();
+    }
+
+    async function loadCustomers() {
+        const result = await request('/KhachHang/DanhSachTaiKhoan');
+state.customers = Array.isArray(result)
+    ? result
+    : Array.isArray(result?.data)
+        ? result.data
+        : [];
+    }
+
+    async function loadOrders() {
+        async function loadOrders() {
+    const result = await request('/hoa-don');
+
+    state.orders = asArray(result, 'hÃ³a Ä‘Æ¡n');
+
+    renderOrders();
+    renderRecentOrders();
+}
+    }
+
+    async function loadView(name) {
+        if (name === 'books') {
+            await Promise.all([
+                loadBooks(),
+                loadGenres(),
+                loadAuthors(),
+                loadPublishers()
+            ]);
+        } else if (name === 'genres') {
+            await loadGenres();
+        } else if (name === 'authors') {
+            await loadAuthors();
+        } else if (name === 'publishers') {
+            await loadPublishers();
+        } else if (name === 'customers') {
+            await loadCustomers();
+        } else if (name === 'orders') {
+            await loadOrders();
+        }
+    }
+
+    async function loadDashboard() {
+async function loadDashboard() {
+    const results = await Promise.allSettled([
+        loadBooks(),
+        loadCustomers(),
+        loadOrders()
+    ]);
+
+    $('#statBooks').textContent =
+        results[0].status === 'fulfilled'
+            ? state.books.length
+            : 'Lá»—i';
+
+    $('#statCustomers').textContent =
+        results[1].status === 'fulfilled'
+            ? state.customers.length
+            : 'Lá»—i';
+
+    $('#statOrders').textContent =
+        results[2].status === 'fulfilled'
+            ? state.orders.length
+            : 'Lá»—i';
+
+    $('#statPaid').textContent =
+        results[2].status === 'fulfilled'
+            ? state.orders.filter(item =>
+                Boolean(
+                    get(
+                        item,
+                        'trangThaiThanhToan',
+                        'TrangThaiThanhToan'
+                    )
+                )
+            ).length
+            : 'Lá»—i';
+
+    const errors = results
+        .filter(result => result.status === 'rejected')
+        .map(result => result.reason?.message || 'Lá»—i khÃ´ng xÃ¡c Ä‘á»‹nh');
+
+    if (errors.length) {
+        notice(errors.join(' â€¢ '), 'error');
+    }
+}
+    }
+        function showView(name) {
+        state.view = name;
+
+        $$('.admin-view').forEach(view => {
+            view.hidden = view.id !== name + 'View';
+        });
+
+        $$('.sidebar-link').forEach(link => {
+            link.classList.toggle('active', link.dataset.view === name);
+        });
+
+        const titles = {
+            dashboard: 'Tá»•ng quan',
+            books: 'Quáº£n lÃ½ sÃ¡ch',
+            genres: 'Quáº£n lÃ½ thá»ƒ loáº¡i',
+            authors: 'Quáº£n lÃ½ tÃ¡c giáº£',
+            publishers: 'Quáº£n lÃ½ nhÃ  xuáº¥t báº£n',
+            customers: 'Quáº£n lÃ½ khÃ¡ch hÃ ng',
+            orders: 'Quáº£n lÃ½ hÃ³a Ä‘Æ¡n'
+        };
+
+        if ($('#pageTitle')) {
+            $('#pageTitle').textContent = titles[name] || 'Quáº£n trá»‹';
+        }
+
+        if (name === 'dashboard') {
+            loadDashboard().catch(error => notice(error.message, 'error'));
+        } else {
+            loadView(name).catch(error => notice(error.message, 'error'));
+        }
+    }
+
+    function openModal(title, body, onSave, saveText = 'LÆ°u') {
+        const modal = $('#adminModal');
+
+        if (!modal) {
+            notice('KhÃ´ng tÃ¬m tháº¥y pháº§n tá»­ #adminModal trong HTML.', 'error');
+            return;
+        }
+
+        const titleElement = $('#modalTitle', modal);
+        const bodyElement = $('#modalBody', modal);
+        const saveButton = $('#modalSave', modal);
+
+        if (!titleElement || !bodyElement || !saveButton) {
+            notice('Modal thiáº¿u modalTitle, modalBody hoáº·c modalSave.', 'error');
+            return;
+        }
+
+        titleElement.textContent = title;
+        bodyElement.innerHTML = body;
+        saveButton.textContent = saveText;
+
+        modal.hidden = false;
+        modal.classList.add('open');
+
+        saveButton.onclick = async () => {
+            saveButton.disabled = true;
+
+            try {
+                await onSave();
+                closeModal();
+            } catch (error) {
+                notice(error.message || 'KhÃ´ng thá»ƒ lÆ°u dá»¯ liá»‡u.', 'error');
+            } finally {
+                saveButton.disabled = false;
+            }
+        };
+    }
+
+    function closeModal() {
+        const modal = $('#adminModal');
+
+        if (!modal) return;
+
+        modal.hidden = true;
+        modal.classList.remove('open');
+
+        const body = $('#modalBody', modal);
+
+        if (body) {
+            body.innerHTML = '';
+        }
+    }
+
+    function field(label, name, value = '', type = 'text', required = true) {
+        return `
+            <label class="form-field">
+                <span>${esc(label)}</span>
+                <input
+                    name="${esc(name)}"
+                    type="${esc(type)}"
+                    value="${esc(value)}"
+                    ${required ? 'required' : ''}
+                >
+            </label>
+        `;
+    }
+
+    function textareaField(label, name, value = '', required = false) {
+        return `
+            <label class="form-field">
+                <span>${esc(label)}</span>
+                <textarea
+                    name="${esc(name)}"
+                    ${required ? 'required' : ''}
+                >${esc(value)}</textarea>
+            </label>
+        `;
+    }
+
+    function selectField(label, name, options, selectedValue = '', required = true) {
+        const optionHtml = options.map(item => {
+            const value = get(item, 'value', 'Value', 'id', 'Id');
+            const text = get(item, 'text', 'Text', 'name', 'Name');
+            const selected = String(value) === String(selectedValue);
+
+            return `
+                <option value="${esc(value)}" ${selected ? 'selected' : ''}>
+                    ${esc(text)}
+                </option>
+            `;
+        }).join('');
+
+        return `
+            <label class="form-field">
+                <span>${esc(label)}</span>
+                <select name="${esc(name)}" ${required ? 'required' : ''}>
+                    <option value="">-- Chá»n ${esc(label.toLowerCase())} --</option>
+                    ${optionHtml}
+                </select>
+            </label>
+        `;
+    }
+
+    function formValues() {
+        const modal = $('#adminModal');
+        const body = $('#modalBody', modal);
+
+        if (!body) {
+            throw new Error('KhÃ´ng tÃ¬m tháº¥y biá»ƒu máº«u nháº­p dá»¯ liá»‡u.');
+        }
+
+        const form = body.querySelector('form');
+
+        if (!form) {
+            throw new Error('KhÃ´ng tÃ¬m tháº¥y form trong modal.');
+        }
+
+        if (!form.reportValidity()) {
+            throw new Error('Vui lÃ²ng nháº­p Ä‘áº§y Ä‘á»§ thÃ´ng tin báº¯t buá»™c.');
+        }
+
+        return Object.fromEntries(new FormData(form).entries());
+    }
+
+    function findById(list, keys, id) {
+        return list.find(item =>
+            String(get(item, ...keys)) === String(id)
+        );
+    }
+
+    function setSelectOptions(select, list, valueKeys, textKeys, selectedValue = '') {
+        if (!select) return;
+
+        select.innerHTML = '<option value="">-- Chá»n --</option>';
+
+        list.forEach(item => {
+            const value = get(item, ...valueKeys);
+            const text = get(item, ...textKeys);
+            const option = document.createElement('option');
+
+            option.value = value;
+            option.textContent = text;
+
+            if (String(value) === String(selectedValue)) {
+                option.selected = true;
+            }
+
+            select.appendChild(option);
+        });
+    }
+        async function openBookForm(book = null) {
+        try {
+            await Promise.all([
+                state.genres.length ? Promise.resolve() : loadGenres(),
+                state.authors.length ? Promise.resolve() : loadAuthors(),
+                state.publishers.length ? Promise.resolve() : loadPublishers()
+            ]);
+
+            const item = book || {};
+
+            const genreOptions = state.genres.map(value => ({
+                value: get(value, 'maTheLoai', 'MaTheLoai'),
+                text: get(value, 'tenTheLoai', 'TenTheLoai')
+            }));
+
+            const authorOptions = state.authors.map(value => ({
+                value: get(value, 'maTacGia', 'MaTacGia'),
+                text: get(value, 'tenTacGia', 'TenTacGia')
+            }));
+
+            const publisherOptions = state.publishers.map(value => ({
+                value: get(value, 'maNhaXuatBan', 'MaNhaXuatBan'),
+                text: get(value, 'tenNhaXuatBan', 'TenNhaXuatBan')
+            }));
+
+            const fields =
+                field('TÃªn sÃ¡ch', 'TenSach', get(item, 'tenSach', 'TenSach'), 'text', true) +
+                field('GiÃ¡ bÃ¡n (VNÄ)', 'Gia', get(item, 'gia', 'Gia'), 'number', true) +
+                field('áº¢nh bÃ¬a', 'AnhBia', get(item, 'anhBia', 'AnhBia'), 'text', true) +
+                selectField('Thá»ƒ loáº¡i', 'MaTheLoai', genreOptions, get(item, 'maTheLoai', 'MaTheLoai')) +
+                selectField('TÃ¡c giáº£', 'MaTacGia', authorOptions, get(item, 'maTacGia', 'MaTacGia')) +
+                selectField('NhÃ  xuáº¥t báº£n', 'MaNhaXuatBan', publisherOptions, get(item, 'maNhaXuatBan', 'MaNhaXuatBan'));
+
+            openModal(
+                book ? 'Sá»­a thÃ´ng tin sÃ¡ch' : 'ThÃªm sÃ¡ch',
+                `<form id="bookForm">${fields}</form>`,
+                async () => {
+                    const form = formValues();
+
+                    const payload = {
+                        MaSach: book ? Number(get(item, 'maSach', 'MaSach')) : 0,
+                        TenSach: String(form.TenSach || '').trim(),
+                        Gia: Number(form.Gia),
+                        AnhBia: String(form.AnhBia || '').trim(),
+                        MaTheLoai: Number(form.MaTheLoai),
+                        MaTacGia: Number(form.MaTacGia),
+                        MaNhaXuatBan: Number(form.MaNhaXuatBan)
+                    };
+
+                    if (!payload.TenSach || !payload.AnhBia) {
+                        throw new Error('Vui lÃ²ng nháº­p tÃªn sÃ¡ch vÃ  áº£nh bÃ¬a.');
+                    }
+
+                    if (!Number.isFinite(payload.Gia) || payload.Gia < 0) {
+                        throw new Error('GiÃ¡ sÃ¡ch khÃ´ng há»£p lá»‡.');
+                    }
+
+                    if (
+                        !payload.MaTheLoai ||
+                        !payload.MaTacGia ||
+                        !payload.MaNhaXuatBan
+                    ) {
+                        throw new Error('Vui lÃ²ng chá»n thá»ƒ loáº¡i, tÃ¡c giáº£ vÃ  nhÃ  xuáº¥t báº£n.');
+                    }
+
+                    await request(
+                        book ? `/sach/${payload.MaSach}` : '/sach',
+                        {
+                            method: book ? 'PUT' : 'POST',
+                            body: payload
+                        }
+                    );
+
+                    await loadBooks();
+
+                    notice(book ? 'ÄÃ£ cáº­p nháº­t sÃ¡ch.' : 'ÄÃ£ thÃªm sÃ¡ch.');
+                }
+            );
+        } catch (error) {
+            notice(error.message || 'KhÃ´ng thá»ƒ má»Ÿ biá»ƒu máº«u sÃ¡ch.', 'error');
+        }
+    }
+
+    async function deleteBook(id) {
+        const book = findById(
+            state.books,
+            ['maSach', 'MaSach'],
+            id
+        );
+
+        if (!book) {
+            notice('KhÃ´ng tÃ¬m tháº¥y sÃ¡ch cáº§n xÃ³a.', 'error');
+            return;
+        }
+
+        const title = get(book, 'tenSach', 'TenSach') || id;
+
+        if (!confirm(`Báº¡n cÃ³ cháº¯c muá»‘n xÃ³a sÃ¡ch "${title}" khÃ´ng?`)) {
+            return;
+        }
+
+        try {
+            await request(`/sach/${encodeURIComponent(id)}`, {
+                method: 'DELETE'
+            });
+
+            await loadBooks();
+            notice('ÄÃ£ xÃ³a sÃ¡ch.');
+        } catch (error) {
+            notice(
+                error.message ||
+                'KhÃ´ng thá»ƒ xÃ³a sÃ¡ch. SÃ¡ch cÃ³ thá»ƒ Ä‘ang Ä‘Æ°á»£c sá»­ dá»¥ng trong hÃ³a Ä‘Æ¡n.',
+                'error'
+            );
+        }
+    }
+        async function openSimpleForm(type, item = null) {
+        const configs = {
+            genre: {
+                title: 'thá»ƒ loáº¡i',
+                endpoint: '/the-loai',
+                idKeys: ['maTheLoai', 'MaTheLoai'],
+                nameKeys: ['tenTheLoai', 'TenTheLoai'],
+                idField: 'MaTheLoai',
+                nameField: 'TenTheLoai',
+                load: loadGenres
+            },
+            author: {
+                title: 'tÃ¡c giáº£',
+                endpoint: '/tac-gia',
+                idKeys: ['maTacGia', 'MaTacGia'],
+                nameKeys: ['tenTacGia', 'TenTacGia'],
+                idField: 'MaTacGia',
+                nameField: 'TenTacGia',
+                load: loadAuthors
+            },
+            publisher: {
+                title: 'nhÃ  xuáº¥t báº£n',
+                endpoint: '/nha-xuat-ban',
+                idKeys: ['maNhaXuatBan', 'MaNhaXuatBan'],
+                nameKeys: ['tenNhaXuatBan', 'TenNhaXuatBan'],
+                idField: 'MaNhaXuatBan',
+                nameField: 'TenNhaXuatBan',
+                load: loadPublishers
+            }
+        };
+
+        const config = configs[type];
+
+        if (!config) {
+            notice('Loáº¡i dá»¯ liá»‡u khÃ´ng há»£p lá»‡.', 'error');
+            return;
+        }
+
+        const currentId = item ? get(item, ...config.idKeys) : '';
+        const currentName = item ? get(item, ...config.nameKeys) : '';
+
+        let fields = field(
+            'TÃªn ' + config.title,
+            config.nameField,
+            currentName,
+            'text',
+            true
+        );
+
+        if (type === 'publisher') {
+            fields += textareaField(
+                'Äá»‹a chá»‰',
+                'DiaChi',
+                get(item, 'diaChi', 'DiaChi'),
+                false
+            );
+        }
+
+        openModal(
+            item ? 'Sá»­a ' + config.title : 'ThÃªm ' + config.title,
+            `<form id="simpleForm">${fields}</form>`,
+            async () => {
+                const values = formValues();
+                const name = String(values[config.nameField] || '').trim();
+
+                if (!name) {
+                    throw new Error('Vui lÃ²ng nháº­p tÃªn ' + config.title + '.');
+                }
+
+                const payload = {
+                    [config.nameField]: name
+                };
+
+                if (item) {
+                    payload[config.idField] = currentId;
+                }
+
+                if (type === 'publisher') {
+                    payload.DiaChi = String(values.DiaChi || '').trim();
+                }
+
+                await request(
+                    item
+                        ? `${config.endpoint}/${encodeURIComponent(currentId)}`
+                        : config.endpoint,
+                    {
+                        method: item ? 'PUT' : 'POST',
+                        body: payload
+                    }
+                );
+
+                await config.load();
+
+                if (type === 'genre' || type === 'author' || type === 'publisher') {
+                    if (state.view === 'books') {
+                        await Promise.all([
+                            loadBooks(),
+                            loadGenres(),
+                            loadAuthors(),
+                            loadPublishers()
+                        ]);
+                    }
+                }
+
+                notice(
+                    item
+                        ? 'ÄÃ£ cáº­p nháº­t ' + config.title + '.'
+                        : 'ÄÃ£ thÃªm ' + config.title + '.'
+                );
+            }
+        );
+    }
+
+    async function deleteSimpleItem(type, id) {
+        const configs = {
+            genre: {
+                title: 'thá»ƒ loáº¡i',
+                endpoint: '/the-loai',
+                list: state.genres,
+                idKeys: ['maTheLoai', 'MaTheLoai'],
+                nameKeys: ['tenTheLoai', 'TenTheLoai'],
+                load: loadGenres
+            },
+            author: {
+                title: 'tÃ¡c giáº£',
+                endpoint: '/tac-gia',
+                list: state.authors,
+                idKeys: ['maTacGia', 'MaTacGia'],
+                nameKeys: ['tenTacGia', 'TenTacGia'],
+                load: loadAuthors
+            },
+            publisher: {
+                title: 'nhÃ  xuáº¥t báº£n',
+                endpoint: '/nha-xuat-ban',
+                list: state.publishers,
+                idKeys: ['maNhaXuatBan', 'MaNhaXuatBan'],
+                nameKeys: ['tenNhaXuatBan', 'TenNhaXuatBan'],
+                load: loadPublishers
+            }
+        };
+
+        const config = configs[type];
+
+        if (!config) {
+            notice('Loáº¡i dá»¯ liá»‡u khÃ´ng há»£p lá»‡.', 'error');
+            return;
+        }
+
+        const item = findById(config.list, config.idKeys, id);
+
+        if (!item) {
+            notice('KhÃ´ng tÃ¬m tháº¥y ' + config.title + ' cáº§n xÃ³a.', 'error');
+            return;
+        }
+
+        const name = get(item, ...config.nameKeys) || id;
+
+        if (!confirm(`Báº¡n cÃ³ cháº¯c muá»‘n xÃ³a ${config.title} "${name}" khÃ´ng?`)) {
+            return;
+        }
+
+        try {
+            await request(
+                `${config.endpoint}/${encodeURIComponent(id)}`,
+                { method: 'DELETE' }
+            );
+
+            await config.load();
+
+            if (state.view === 'books') {
+                await Promise.all([
+                    loadBooks(),
+                    loadGenres(),
+                    loadAuthors(),
+                    loadPublishers()
+                ]);
+            }
+
+            notice('ÄÃ£ xÃ³a ' + config.title + '.');
+        } catch (error) {
+            notice(
+                error.message ||
+                'KhÃ´ng thá»ƒ xÃ³a. Dá»¯ liá»‡u cÃ³ thá»ƒ Ä‘ang Ä‘Æ°á»£c sá»­ dá»¥ng.',
+                'error'
+            );
+        }
+    }
+
+    async function showCustomerDetail(id) {
+        const customer = findById(
+            state.customers,
+            ['maKhachHang', 'MaKhachHang'],
+            id
+        );
+
+        if (!customer) {
+            notice('KhÃ´ng tÃ¬m tháº¥y khÃ¡ch hÃ ng.', 'error');
+            return;
+        }
+
+        const details = [
+            ['MÃ£ khÃ¡ch hÃ ng', get(customer, 'maKhachHang', 'MaKhachHang')],
+            ['Há» tÃªn', get(customer, 'tenKhachHang', 'TenKhachHang')],
+            ['TÃªn Ä‘Äƒng nháº­p', get(customer, 'tenDangNhap', 'TenDangNhap')],
+            ['Email', get(customer, 'email', 'Email')],
+            ['Sá»‘ Ä‘iá»‡n thoáº¡i', get(customer, 'soDienThoai', 'SoDienThoai')],
+            ['Vai trÃ²', get(customer, 'role', 'Role')]
+        ];
+
+        const body = details.map(([label, value]) => `
+            <div class="detail-row">
+                <span>${esc(label)}</span>
+                <b>${esc(value || 'â€”')}</b>
+            </div>
+        `).join('');
+
+        openModal(
+            'ThÃ´ng tin khÃ¡ch hÃ ng',
+            `<div class="detail-list">${body}</div>`,
+            async () => {},
+            'ÄÃ³ng'
+        );
+
+        const saveButton = $('#modalSave');
+
+        if (saveButton) {
+            saveButton.onclick = closeModal;
+        }
+    }
+        async function showOrderDetail(id) {
+        const order = findById(
+            state.orders,
+            ['maHoaDon', 'MaHoaDon'],
+            id
+        );
+
+        if (!order) {
+            notice('KhÃ´ng tÃ¬m tháº¥y hÃ³a Ä‘Æ¡n.', 'error');
+            return;
+        }
+
+        const details = [
+            ['MÃ£ hÃ³a Ä‘Æ¡n', get(order, 'maHoaDon', 'MaHoaDon')],
+            ['NgÃ y láº­p', date(get(order, 'ngayLap', 'NgayLap'))],
+            ['TÃªn ngÆ°á»i nháº­n', get(order, 'tenNguoiNhan', 'TenNguoiNhan')],
+            ['Sá»‘ Ä‘iá»‡n thoáº¡i', get(order, 'soDienThoai', 'SoDienThoai')],
+            ['Äá»‹a chá»‰', get(order, 'diaChi', 'DiaChi')],
+            ['Tá»•ng tiá»n', money(get(order, 'tongTien', 'TongTien'))],
+            ['PhÆ°Æ¡ng thá»©c thanh toÃ¡n', get(order, 'phuongThucThanhToan', 'PhuongThucThanhToan')],
+            [
+                'Tráº¡ng thÃ¡i thanh toÃ¡n',
+                Boolean(get(order, 'trangThaiThanhToan', 'TrangThaiThanhToan'))
+                    ? 'ÄÃ£ thanh toÃ¡n'
+                    : 'ChÆ°a thanh toÃ¡n'
+            ],
+            ['Ghi chÃº', get(order, 'ghiChu', 'GhiChu')]
+        ];
+
+        const body = details.map(([label, value]) => `
+            <div class="detail-row">
+                <span>${esc(label)}</span>
+                <b>${esc(value || 'â€”')}</b>
+            </div>
+        `).join('');
+
+        openModal(
+            'Chi tiáº¿t hÃ³a Ä‘Æ¡n #' + id,
+            `<div class="detail-list">${body}</div>`,
+            async () => {},
+            'ÄÃ³ng'
+        );
+
+        const saveButton = $('#modalSave');
+
+        if (saveButton) {
+            saveButton.onclick = closeModal;
+        }
+    }
+
+    async function openOrderForm(order) {
+        async function openOrderForm(order) {
+    if (!order) {
+        notice('KhÃ´ng tÃ¬m tháº¥y hÃ³a Ä‘Æ¡n cáº§n sá»­a.', 'error');
+        return;
+    }
+
+    const orderId = get(order, 'maHoaDon', 'MaHoaDon');
+
+    const fields =
+        field(
+            'TÃªn ngÆ°á»i nháº­n',
+            'TenNguoiNhan',
+            get(order, 'tenNguoiNhan', 'TenNguoiNhan'),
+            'text',
+            true
+        ) +
+        field(
+            'Sá»‘ Ä‘iá»‡n thoáº¡i',
+            'SoDienThoai',
+            get(order, 'soDienThoai', 'SoDienThoai'),
+            'text',
+            true
+        ) +
+        textareaField(
+            'Äá»‹a chá»‰',
+            'DiaChi',
+            get(order, 'diaChi', 'DiaChi'),
+            true
+        ) +
+        field(
+            'PhÆ°Æ¡ng thá»©c thanh toÃ¡n',
+            'PhuongThucThanhToan',
+            get(order, 'phuongThucThanhToan', 'PhuongThucThanhToan'),
+            'text',
+            false
+        ) +
+        textareaField(
+            'Ghi chÃº',
+            'GhiChu',
+            get(order, 'ghiChu', 'GhiChu'),
+            false
+        );
+
+    openModal(
+        'Sá»­a hÃ³a Ä‘Æ¡n #' + orderId,
+        `<form id="orderForm">${fields}</form>`,
+        async () => {
+            const values = formValues();
+
+            const payload = {
+                MaHoaDon: Number(orderId),
+                TenNguoiNhan: String(values.TenNguoiNhan || '').trim(),
+                SoDienThoai: String(values.SoDienThoai || '').trim(),
+                DiaChi: String(values.DiaChi || '').trim(),
+                PhuongThucThanhToan:
+                    String(values.PhuongThucThanhToan || '').trim(),
+                GhiChu: String(values.GhiChu || '').trim()
+            };
+
+            if (!payload.TenNguoiNhan) {
+                throw new Error('Vui lÃ²ng nháº­p tÃªn ngÆ°á»i nháº­n.');
+            }
+
+            if (!payload.SoDienThoai) {
+                throw new Error('Vui lÃ²ng nháº­p sá»‘ Ä‘iá»‡n thoáº¡i.');
+            }
+
+            if (!payload.DiaChi) {
+                throw new Error('Vui lÃ²ng nháº­p Ä‘á»‹a chá»‰.');
+            }
+
+            await request(
+                `/hoa-don/${encodeURIComponent(orderId)}`,
+                {
+                    method: 'PUT',
+                    body: payload
+                }
+            );
+
+            await loadOrders();
+
+            notice('ÄÃ£ cáº­p nháº­t hÃ³a Ä‘Æ¡n.');
+        }
+    );
+}
+    }
+
+   
+async function toggleOrderPayment(id, currentPaid) {
+    const order = findById(
+        state.orders,
+        ['maHoaDon', 'MaHoaDon'],
+        id
+    );
+
+    if (!order) {
+        notice('KhÃ´ng tÃ¬m tháº¥y hÃ³a Ä‘Æ¡n.', 'error');
+        return;
+    }
+
+    const nextPaid = !currentPaid;
+
+    const message = nextPaid
+        ? 'XÃ¡c nháº­n hÃ³a Ä‘Æ¡n nÃ y Ä‘Ã£ thanh toÃ¡n?'
+        : 'XÃ¡c nháº­n chuyá»ƒn hÃ³a Ä‘Æ¡n vá» chÆ°a thanh toÃ¡n?';
+
+    if (!confirm(message)) {
+        return;
+    }
+
+    try {
+        await request(
+            `/hoa-don/${encodeURIComponent(id)}/trang-thai-thanh-toan?trangThai=${nextPaid}`,
+            {
+                method: 'PUT'
+            }
+        );
+
+        await loadOrders();
+
+        notice(
+            nextPaid
+                ? 'ÄÃ£ xÃ¡c nháº­n thanh toÃ¡n.'
+                : 'ÄÃ£ cáº­p nháº­t tráº¡ng thÃ¡i thanh toÃ¡n.'
+        );
+    } catch (error) {
+        notice(
+            error.message || 'KhÃ´ng thá»ƒ cáº­p nháº­t tráº¡ng thÃ¡i thanh toÃ¡n.',
+            'error'
+        );
+    }
+}
+
+
+    async function deleteOrder(id) {
+        const order = findById(
+            state.orders,
+            ['maHoaDon', 'MaHoaDon'],
+            id
+        );
+
+        if (!order) {
+            notice('KhÃ´ng tÃ¬m tháº¥y hÃ³a Ä‘Æ¡n cáº§n xÃ³a.', 'error');
+            return;
+        }
+
+        if (!confirm(`Báº¡n cÃ³ cháº¯c muá»‘n xÃ³a hÃ³a Ä‘Æ¡n #${id} khÃ´ng?`)) {
+            return;
+        }
+
+        try {
+            await request(`/hoa-don/${encodeURIComponent(id)}`, {
+                method: 'DELETE'
+            });
+
+            await loadOrders();
+            notice('ÄÃ£ xÃ³a hÃ³a Ä‘Æ¡n.');
+        } catch (error) {
+            notice(
+                error.message ||
+                'KhÃ´ng thá»ƒ xÃ³a hÃ³a Ä‘Æ¡n. HÃ³a Ä‘Æ¡n cÃ³ thá»ƒ Ä‘ang cÃ³ chi tiáº¿t liÃªn quan.',
+                'error'
+            );
+        }
+    }
+        function bindSearch() {
+        $('#bookSearch')?.addEventListener('input', renderBooks);
+        $('#customerSearch')?.addEventListener('input', renderCustomers);
+        $('#orderSearch')?.addEventListener('input', renderOrders);
+    }
+
+    function bindNavigation() {
+        $$('.sidebar-link').forEach(link => {
+            link.addEventListener('click', event => {
+                event.preventDefault();
+
+                const view = link.dataset.view;
+
+                if (view) {
+                    showView(view);
+                }
+            });
+        });
+    }
+
+    function bindActions() {
+        document.addEventListener('click', async event => {
+            const button = event.target.closest('[data-action]');
+
+            if (!button) return;
+
+            const action = button.dataset.action;
+            const id = button.dataset.id;
+
+            try {
+                switch (action) {
+                    case 'book-add':
+                        await openBookForm();
+                        break;
+
+                    case 'book-edit': {
+                        const item = findById(
+                            state.books,
+                            ['maSach', 'MaSach'],
+                            id
+                        );
+
+                        if (!item) {
+                            notice('KhÃ´ng tÃ¬m tháº¥y sÃ¡ch.', 'error');
+                            return;
+                        }
+
+                        await openBookForm(item);
+                        break;
+                    }
+
+                    case 'book-delete':
+                        await deleteBook(id);
+                        break;
+
+                    case 'genre-add':
+                        await openSimpleForm('genre');
+                        break;
+
+                    case 'genre-edit': {
+                        const item = findById(
+                            state.genres,
+                            ['maTheLoai', 'MaTheLoai'],
+                            id
+                        );
+
+                        await openSimpleForm('genre', item);
+                        break;
+                    }
+
+                    case 'genre-delete':
+                        await deleteSimpleItem('genre', id);
+                        break;
+
+                    case 'author-add':
+                        await openSimpleForm('author');
+                        break;
+
+                    case 'author-edit': {
+                        const item = findById(
+                            state.authors,
+                            ['maTacGia', 'MaTacGia'],
+                            id
+                        );
+
+                        await openSimpleForm('author', item);
+                        break;
+                    }
+
+                    case 'author-delete':
+                        await deleteSimpleItem('author', id);
+                        break;
+
+                    case 'publisher-add':
+                        await openSimpleForm('publisher');
+                        break;
+
+                    case 'publisher-edit': {
+                        const item = findById(
+                            state.publishers,
+                            ['maNhaXuatBan', 'MaNhaXuatBan'],
+                            id
+                        );
+
+                        await openSimpleForm('publisher', item);
+                        break;
+                    }
+
+                    case 'publisher-delete':
+                        await deleteSimpleItem('publisher', id);
+                        break;
+
+                    case 'customer-detail':
+                        await showCustomerDetail(id);
+                        break;
+
+                    case 'order-detail':
+                        await showOrderDetail(id);
+                        break;
+
+                    case 'order-edit': {
+                        const item = findById(
+                            state.orders,
+                            ['maHoaDon', 'MaHoaDon'],
+                            id
+                        );
+
+                        await openOrderForm(item);
+                        break;
+                    }
+
+                    case 'order-toggle':
+                        await toggleOrderPayment(
+                            id,
+                            button.dataset.paid === 'true'
+                        );
+                        break;
+
+                    case 'order-delete':
+                        await deleteOrder(id);
+                        break;
+
+                    case 'modal-close':
+                        closeModal();
+                        break;
+
+                    default:
+                        break;
+                }
+            } catch (error) {
+                notice(error.message || 'ÄÃ£ xáº£y ra lá»—i.', 'error');
+            }
+        });
+    }
+
+    function bindModal() {
+        const modal = $('#adminModal');
+
+        if (!modal) return;
+
+        modal.addEventListener('click', event => {
+            if (
+                event.target === modal ||
+                event.target.closest('[data-action="modal-close"]')
+            ) {
+                closeModal();
+            }
+        });
+
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                closeModal();
+            }
+        });
+    }
+
+    async function logout() {
+        if (!confirm('Báº¡n cÃ³ cháº¯c muá»‘n Ä‘Äƒng xuáº¥t khÃ´ng?')) {
+            return;
+        }
+
+        try {
+            await request('/KhachHang/logout', {
+                method: 'POST'
+            });
+        } catch (error) {
+            console.warn('ÄÄƒng xuáº¥t API:', error.message);
+        } finally {
+            sessionStorage.removeItem('bookstore-admin-user');
+            location.replace('login.html');
+        }
+    }
+
+    function bindLogout() {
+        const logoutButton = $('#logoutBtn');
+
+        if (logoutButton) {
+            logoutButton.addEventListener('click', logout);
+        }
+    }
+
+    function init() {
+        if (!requireAdmin()) {
+            return;
+        }
+
+        bindSearch();
+        bindNavigation();
+        bindActions();
+        bindModal();
+        bindLogout();
+
+        showView('dashboard');
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
+
+========== Frontend\login.html ==========
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ÄÄƒng nháº­p quáº£n trá»‹ - BookStore</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: linear-gradient(135deg, #fff2e9, #f4f5f9);
+            color: #252525;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 430px;
+            padding: 36px;
+            background: #fff;
+            border-radius: 18px;
+            box-shadow: 0 12px 45px rgba(0, 0, 0, 0.09);
+        }
+
+        .logo {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 18px;
+            background: #d96535;
+            color: #fff;
+            font-size: 30px;
+            font-weight: bold;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 25px;
+            margin-bottom: 9px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #777;
+            font-size: 14px;
+            margin-bottom: 28px;
+            line-height: 1.5;
+        }
+
+        .field {
+            margin-bottom: 19px;
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        input {
+            width: 100%;
+            height: 46px;
+            padding: 0 13px;
+            border: 1px solid #dedede;
+            border-radius: 9px;
+            outline: none;
+            font-size: 15px;
+            background: #fff;
+        }
+
+        input:focus {
+            border-color: #d96535;
+            box-shadow: 0 0 0 3px rgba(217, 101, 53, 0.12);
+        }
+
+        .password-wrapper {
+            position: relative;
+        }
+
+        .password-wrapper input {
+            padding-right: 65px;
+        }
+
+        .toggle-password {
+            position: absolute;
+            top: 0;
+            right: 0;
+            height: 46px;
+            padding: 0 12px;
+            border: none;
+            background: transparent;
+            color: #d96535;
+            cursor: pointer;
+        }
+
+        .remember-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 22px;
+            font-size: 13px;
+            color: #555;
+        }
+
+        .remember-row input {
+            width: 16px;
+            height: 16px;
+            accent-color: #d96535;
+        }
+
+        .remember-row label {
+            margin: 0;
+            font-weight: normal;
+            cursor: pointer;
+        }
+
+        .submit-btn {
+            width: 100%;
+            height: 47px;
+            border: none;
+            border-radius: 9px;
+            background: #d96535;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .submit-btn:hover {
+            background: #bd5127;
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.65;
+            cursor: not-allowed;
+        }
+
+        .message {
+            display: none;
+            padding: 12px;
+            margin-bottom: 18px;
+            border-radius: 8px;
+            font-size: 13px;
+            line-height: 1.5;
+            overflow-wrap: anywhere;
+        }
+
+        .message.error {
+            display: block;
+            color: #a42323;
+            background: #fff0f0;
+            border: 1px solid #ffd4d4;
+        }
+
+        .message.success {
+            display: block;
+            color: #176b39;
+            background: #edfff3;
+            border: 1px solid #c9f1d7;
+        }
+
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 23px;
+            color: #777;
+            font-size: 13px;
+            text-decoration: none;
+        }
+
+        .back-link:hover {
+            color: #d96535;
+        }
+
+        .footer {
+            margin-top: 23px;
+            text-align: center;
+            font-size: 12px;
+            color: #999;
+        }
+
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 27px 22px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="login-container">
+        <div class="logo">B</div>
+
+        <h1>ÄÄƒng nháº­p Admin</h1>
+        <p class="subtitle">
+            ÄÄƒng nháº­p tÃ i khoáº£n quáº£n trá»‹ Ä‘á»ƒ quáº£n lÃ½ cá»­a hÃ ng sÃ¡ch
+        </p>
+
+        <div id="message" class="message" role="alert"></div>
+
+        <form id="loginForm">
+            <div class="field">
+                <label for="username">TÃªn Ä‘Äƒng nháº­p</label>
+                <input
+                    id="username"
+                    name="username"
+                    type="text"
+                    placeholder="Nháº­p tÃªn Ä‘Äƒng nháº­p"
+                    autocomplete="username"
+                    required
+                >
+            </div>
+
+            <div class="field">
+                <label for="password">Máº­t kháº©u</label>
+                <div class="password-wrapper">
+                    <input
+                        id="password"
+                        name="password"
+                        type="password"
+                        placeholder="Nháº­p máº­t kháº©u"
+                        autocomplete="current-password"
+                        required
+                    >
+                    <button
+                        type="button"
+                        id="togglePassword"
+                        class="toggle-password"
+                    >
+                        Hiá»‡n
+                    </button>
+                </div>
+            </div>
+
+            <div class="remember-row">
+                <input type="checkbox" id="rememberUsername">
+                <label for="rememberUsername">Ghi nhá»› tÃªn Ä‘Äƒng nháº­p</label>
+            </div>
+
+            <button type="submit" id="submitBtn" class="submit-btn">
+                ÄÄƒng nháº­p
+            </button>
+        </form>
+
+        <a class="back-link" href="../index.html">
+            â† Quay láº¡i trang chá»§
+        </a>
+
+        <div class="footer">
+            BookStore Administration
+        </div>
+    </main>
+
+    <script>
+        'use strict';
+
+        const API_ROOT = (
+            localStorage.getItem('API_ROOT') || 'https://localhost:7091'
+        ).replace(/\/+$/, '');
+
+        const LOGIN_URL = API_ROOT + '/api/KhachHang/login';
+        const LOGOUT_URL = API_ROOT + '/api/KhachHang/logout';
+
+        const form = document.getElementById('loginForm');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const submitBtn = document.getElementById('submitBtn');
+        const message = document.getElementById('message');
+        const rememberUsername = document.getElementById('rememberUsername');
+
+        function showMessage(text, type = 'error') {
+            message.textContent = text;
+            message.className = 'message ' + type;
+        }
+
+        function getValue(obj, ...keys) {
+            for (const key of keys) {
+                if (obj && obj[key] !== undefined && obj[key] !== null) {
+                    return obj[key];
+                }
+            }
+
+            return null;
+        }
+
+        function getResponseData(body) {
+            return getValue(body, 'data', 'Data') ?? body;
+        }
+
+        function getRole(user) {
+            return getValue(user, 'role', 'Role');
+        }
+
+        function getCustomerName(user) {
+            return getValue(user, 'tenKhachHang', 'TenKhachHang') || '';
+        }
+
+        function clearAdminSession() {
+            sessionStorage.removeItem('bookstore-admin-user');
+        }
+
+        document.getElementById('togglePassword').addEventListener('click', () => {
+            const isPassword = passwordInput.type === 'password';
+            passwordInput.type = isPassword ? 'text' : 'password';
+            document.getElementById('togglePassword').textContent =
+                isPassword ? 'áº¨n' : 'Hiá»‡n';
+        });
+
+        const savedUsername = localStorage.getItem('bookstore-admin-username');
+
+        if (savedUsername) {
+            usernameInput.value = savedUsername;
+            rememberUsername.checked = true;
+        }
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value;
+
+            if (!username || !password) {
+                showMessage('Vui lÃ²ng nháº­p Ä‘áº§y Ä‘á»§ tÃªn Ä‘Äƒng nháº­p vÃ  máº­t kháº©u.');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Äang Ä‘Äƒng nháº­p...';
+            message.className = 'message';
+            clearAdminSession();
+
+            try {
+                const response = await fetch(LOGIN_URL, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        UserName: username,
+                        Password: password
+                    })
+                });
+
+                const raw = await response.text();
+                let body;
+
+                try {
+                    body = raw ? JSON.parse(raw) : {};
+                } catch {
+                    body = {};
+                }
+
+                if (!response.ok) {
+                    throw new Error(
+                        getValue(body, 'message', 'Message', 'title') ||
+                        `ÄÄƒng nháº­p tháº¥t báº¡i (HTTP ${response.status}).`
+                    );
+                }
+
+                if (
+                    getValue(body, 'success', 'Success') === false
+                ) {
+                    throw new Error(
+                        getValue(body, 'message', 'Message') ||
+                        'TÃªn Ä‘Äƒng nháº­p hoáº·c máº­t kháº©u khÃ´ng Ä‘Ãºng.'
+                    );
+                }
+
+                const user = getResponseData(body);
+                const role = getRole(user);
+
+                if (String(role || '').toLowerCase() !== 'admin') {
+                    try {
+                        await fetch(LOGOUT_URL, {
+                            method: 'POST',
+                            credentials: 'include'
+                        });
+                    } catch {}
+
+                    throw new Error(
+                        'TÃ i khoáº£n Ä‘Äƒng nháº­p khÃ´ng cÃ³ quyá»n Admin.'
+                    );
+                }
+
+                if (rememberUsername.checked) {
+                    localStorage.setItem(
+                        'bookstore-admin-username',
+                        username
+                    );
+                } else {
+                    localStorage.removeItem('bookstore-admin-username');
+                }
+
+                sessionStorage.setItem(
+                    'bookstore-admin-user',
+                    JSON.stringify(user)
+                );
+
+                showMessage('ÄÄƒng nháº­p thÃ nh cÃ´ng. Äang chuyá»ƒn trang...', 'success');
+
+                window.location.href = 'index.html';
+            } catch (error) {
+                console.error('Lá»—i Ä‘Äƒng nháº­p:', error);
+
+                let errorMessage = error.message ||
+                    'ÄÃ£ xáº£y ra lá»—i khi Ä‘Äƒng nháº­p.';
+
+                if (error instanceof TypeError) {
+                    errorMessage =
+                        'KhÃ´ng káº¿t ná»‘i Ä‘Æ°á»£c API. HÃ£y kiá»ƒm tra API cÃ³ Ä‘ang cháº¡y, chá»©ng chá»‰ HTTPS vÃ  CORS.';
+                }
+
+                showMessage(errorMessage);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'ÄÄƒng nháº­p';
+            }
+        });
+    </script>
+</body>
+</html>
+
+
+========== Frontend\js\api-store.js ==========
+/* Frontend API integration for APIq. Configure API_ROOT in localStorage if needed. */
+(() => {
+ 'use strict';
+  const API_ROOT =
+    (localStorage.getItem('API_ROOT') ||
+     'https://localhost:7091').replace(/\/$/, '');
+
+const API = API_ROOT + '/api';
+ const $ = (s, r=document) => r.querySelector(s);
+ const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+ const state = { user: null, books: [], cart: [] }; let editingReviewId = null;
+ const money = n => Number(n || 0).toLocaleString('vi-VN') + ' â‚«';
+ const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const unwrap = d => d?.data ?? d?.result ?? d?.items ?? d;
+ 
+async function request(path, options = {}) {
+    const url = API + path;
+
+    const response = await fetch(url, {
+        ...options,
+        credentials: 'include',
+        headers: {
+            Accept: 'application/json',
+            ...(options.body ? {
+                'Content-Type': 'application/json'
+            } : {}),
+            ...options.headers
+        },
+        body: options.body && typeof options.body !== 'string'
+            ? JSON.stringify(options.body)
+            : options.body
+    });
+
+    const text = await response.text();
+
+    let data = null;
+    try {
+        data = text ? JSON.parse(text) : null;
+    } catch {
+        data = text;
+    }
+
+    if (!response.ok) {
+        throw new Error(
+            data?.message ||
+            data?.Message ||
+            data?.title ||
+            `HTTP ${response.status}`
+        );
+    }
+
+    return data;
+}
+ 
+ function notice(message, type='success') {
+   let box = $('#api-toast'); if (!box) { box=document.createElement('div'); box.id='api-toast'; box.style.cssText='position:fixed;right:20px;top:20px;z-index:99999;max-width:380px;padding:14px 18px;border-radius:8px;color:#fff;box-shadow:0 5px 24px #0002'; document.body.append(box); }
+   box.style.background = type==='error' ? '#b02a37' : '#198754'; box.textContent=message; box.hidden=false; clearTimeout(box._timer); box._timer=setTimeout(()=>box.hidden=true,4000);
+ }
+ function isUserLoggedIn() {
+    const token =
+        localStorage.getItem('token') ||
+        localStorage.getItem('accessToken');
+
+    const user =
+        localStorage.getItem('currentUser') ||
+        localStorage.getItem('user');
+
+    return !!(token || user);
+}
+
+function requireLogin() {
+    alert('Vui lÃ²ng Ä‘Äƒng nháº­p Ä‘á»ƒ thÃªm sÃ¡ch vÃ o giá» hÃ ng!');
+
+    // Äá»•i dangnhap.html thÃ nh Ä‘Ãºng tÃªn trang Ä‘Äƒng nháº­p cá»§a báº¡n
+    sessionStorage.setItem(
+        'redirectAfterLogin',
+        window.location.href
+    );
+
+    window.location.href = 'dangnhap.html';
+}
+function getUser() {
+    try {
+        return JSON.parse(
+            sessionStorage.getItem('apiq-user') || 'null'
+        );
+    } catch {
+        return null;
+    }
+}
+
+function isUserLoggedIn() {
+    const user = getUser();
+
+    return !!(
+        user &&
+        (
+            user.maKhachHang ||
+            user.MaKhachHang ||
+            user.id ||
+            user.Id
+        )
+    );
+}
+ function setUser(u) { state.user=u; if(u) sessionStorage.setItem('apiq-user',JSON.stringify(u)); else sessionStorage.removeItem('apiq-user'); updateNav(); }
+ function idOf(u=state.user) { return u?.maKhachHang ?? u?.MaKhachHang ?? u?.id ?? u?.Id; }
+ function isVerified(u=state.user) { return u?.isVerified ?? u?.IsVerified ?? false; }
+ function bookId(b) { return b?.maSach ?? b?.MaSach ?? b?.id; }
+ function bookTitle(b) { return b?.tenSach ?? b?.TenSach ?? b?.title ?? 'SÃ¡ch'; }
+ function bookPrice(b) { return b?.gia ?? b?.Gia ?? b?.price ?? 0; }
+ function bookImage(book) {
+    const image =
+        book?.anhBia ??
+        book?.AnhBia ??
+        book?.hinhAnh ??
+        book?.HinhAnh ??
+        '';
+
+    if (!image || !String(image).trim()) {
+        return 'image/giohang.jpg';
+    }
+
+    const path = String(image).trim();
+
+    // Náº¿u API tráº£ vá» Ä‘Æ°á»ng dáº«n Ä‘áº§y Ä‘á»§
+    if (/^https?:\/\//i.test(path)) {
+        return path;
+    }
+
+    // Náº¿u Ä‘Ã£ cÃ³ Ä‘Æ°á»ng dáº«n thÆ° má»¥c
+    if (path.startsWith('image/')) {
+        return path;
+    }
+
+    // áº¢nh bÃ¬a sÃ¡ch náº±m trong image/sach/
+    return 'image/sach/' + path.replace(/^\/+/, '');
+}
+ function updateNav() {
+   const nav=$('#navbarCollapse .navbar-nav'); if(!nav) return;
+   if(!$('#api-account-nav',nav)) { const wrap=document.createElement('div'); wrap.id='api-account-nav'; wrap.className='d-flex align-items-center flex-wrap gap-2 ms-lg-3 py-2'; nav.append(wrap); }
+   const wrap=$('#api-account-nav',nav); const u=getUser();
+   wrap.innerHTML = u ? `<span class="small text-dark">Xin chÃ o, ${esc(u.tenKhachHang||u.TenKhachHang||u.email||u.Email||'KhÃ¡ch hÃ ng')}</span><a class="btn btn-outline-primary rounded-pill btn-sm" href="profile.html">TÃ i khoáº£n</a><a class="btn btn-outline-primary rounded-pill btn-sm" href="favorites.html">YÃªu thÃ­ch</a><a class="btn btn-outline-primary rounded-pill btn-sm" href="orders.html">ÄÆ¡n mua</a><button class="btn btn-primary rounded-pill btn-sm" id="api-logout">ÄÄƒng xuáº¥t</button>` : `<a class="btn btn-outline-primary rounded-pill btn-sm" href="login.html">ÄÄƒng nháº­p</a><a class="btn btn-primary rounded-pill btn-sm" href="register.html">ÄÄƒng kÃ½</a>`;
+   $('#api-logout')?.addEventListener('click', async()=>{ try { await request('/KhachHang/logout',{method:'POST'}); } catch(e){} setUser(null); notice('ÄÃ£ Ä‘Äƒng xuáº¥t'); setTimeout(()=>location.href='index.html',500); });
+ }
+ 
+async function loadBooks() {
+    try {
+        const d = await request('/sach');
+        const data = unwrap(d);
+
+        state.books = Array.isArray(data) ? data : [];
+
+        // THÃŠM DÃ’NG NÃ€Y Äá»‚ KIá»‚M TRA
+        console.log('Dá»¯ liá»‡u sÃ¡ch API tráº£ vá»:', state.books[0]);
+
+        bindBookSearch();
+        renderBookGrids();
+    } catch (e) {
+        console.warn('KhÃ´ng táº£i Ä‘Æ°á»£c sÃ¡ch:', e);
+
+        const el = $('#api-book-status');
+        if (el) {
+            el.textContent =
+                'ChÆ°a káº¿t ná»‘i Ä‘Æ°á»£c API sÃ¡ch. Kiá»ƒm tra API_ROOT vÃ  CORS.';
+        }
+    }
+}
+
+
+function card(b) {
+    const id = bookId(b);
+
+    return `
+        <div class="col-md-6 col-lg-4 col-xl-3 mb-4">
+            <div class="product-item api-book-card rounded h-100 border">
+                <div class="product-item-inner border-0 rounded">
+                    <div class="product-item-inner-item">
+                        <a href="book.html?id=${encodeURIComponent(id)}">
+                            <img
+                                src="${esc(bookImage(b))}"
+                                class="img-fluid w-100 rounded-top"
+                                style="height:260px;object-fit:contain;background:#fff"
+                                alt="${esc(bookTitle(b))}"
+                                onerror="this.onerror=null;this.src='image/ThuVien.jpg'"
+                            >
+                        </a>
+                    </div>
+
+                    <div class="text-center p-3 api-book-info">
+                        <h6 class="text-truncate">
+                            <a class="text-dark"
+                               href="book.html?id=${encodeURIComponent(id)}">
+                                ${esc(bookTitle(b))}
+                            </a>
+                        </h6>
+
+                        <div class="text-primary fw-bold mb-3">
+                            ${money(bookPrice(b))}
+                        </div>
+
+                        <button
+                            class="btn btn-primary rounded-pill px-3 me-1"
+                            data-add-cart="${esc(id)}">
+                            <i class="fas fa-shopping-cart me-1"></i>
+                            ThÃªm giá»
+                        </button>
+
+                        <button
+                            class="btn btn-outline-danger rounded-pill px-3"
+                            data-favorite="${esc(id)}"
+                            title="YÃªu thÃ­ch">
+                            â™¡
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+
+
+function getCategoryId(item) {
+    const category = item?.maTheLoaiNavigation
+        ?? item?.MaTheLoaiNavigation
+        ?? item?.theLoai
+        ?? item?.TheLoai
+        ?? item?.theLoaiSach
+        ?? item?.TheLoaiSach;
+
+    return (
+        item?.maTheLoai ??
+        item?.MaTheLoai ??
+        item?.theLoaiId ??
+        item?.TheLoaiId ??
+        item?.idTheLoai ??
+        item?.IdTheLoai ??
+        category?.maTheLoai ??
+        category?.MaTheLoai ??
+        category?.theLoaiId ??
+        category?.TheLoaiId ??
+        category?.id ??
+        category?.Id ??
+        null
+    );
+}
+function getCategoryId(book) {
+    return book.MaTheLoai ?? book.maTheLoai ?? null;
+}
+
+function getCategoryName(item) {
+    return String(
+        item?.tenTheLoai ??
+        item?.TenTheLoai ??
+        item?.maTheLoaiNavigation?.tenTheLoai ??
+        item?.MaTheLoaiNavigation?.TenTheLoai ??
+        item?.theLoai?.tenTheLoai ??
+        item?.TheLoai?.TenTheLoai ??
+        item?.theLoaiSach?.tenTheLoai ??
+        item?.TheLoaiSach?.TenTheLoai ??
+        ''
+    ).trim().toLocaleLowerCase('vi');
+}
+
+async function loadBookCategories() {
+    const container = document.getElementById('api-book-categories');
+    if (!container) return;
+
+    try {
+        const result = await request('/TheLoai');
+        const categories = unwrap(result);
+
+        if (!Array.isArray(categories)) {
+            console.error('Dá»¯ liá»‡u thá»ƒ loáº¡i khÃ´ng há»£p lá»‡:', result);
+            return;
+        }
+
+        
+    const searchCategorySelect =
+        document.getElementById('search-book-category');
+
+    if (searchCategorySelect) {
+        searchCategorySelect.innerHTML = `
+            <option value="">Táº¥t cáº£ thá»ƒ loáº¡i</option>
+            ${categories.map(item => {
+                const id = item.maTheLoai ?? item.MaTheLoai
+                    ?? item.id ?? item.Id;
+
+                const name = item.tenTheLoai ?? item.TenTheLoai;
+
+                if (id == null || !name) return '';
+
+                return `
+                    <option value="${esc(String(id))}">
+                        ${esc(String(name))}
+                    </option>
+                `;
+            }).join('')}
+        `;
+
+        const params = new URLSearchParams(window.location.search);
+        searchCategorySelect.value = params.get('loai') || '';
+    }
+
+
+        const books = Array.isArray(state.books) ? state.books : [];
+
+        const allItem = `
+            <li>
+                <div class="categories-item">
+                    <a href="shop.html" class="text-dark"
+                       data-category="">
+                        <i class="fas fa-book text-danger me-2"></i>
+                        Táº¥t cáº£ sÃ¡ch
+                    </a>
+                    <span>(${books.length})</span>
+                </div>
+            </li>`;
+
+        const categoryItems = categories.map(category => {
+            const id = category.maTheLoai ?? category.MaTheLoai
+                ?? category.id ?? category.Id;
+
+            const name = category.tenTheLoai ?? category.TenTheLoai;
+
+            if (id == null || !name) return '';
+
+            const categoryName = String(name).trim().toLowerCase();
+
+            const count = books.filter(book => {
+                const bookId = getCategoryId(book);
+
+                // Æ¯u tiÃªn so sÃ¡nh mÃ£ thá»ƒ loáº¡i.
+                if (bookId != null) {
+                    return String(bookId) === String(id);
+                }
+
+                // Náº¿u API chá»‰ tráº£ tÃªn thá»ƒ loáº¡i, so sÃ¡nh theo tÃªn.
+                return getCategoryName(book) === categoryName;
+            }).length;
+
+            return `
+                <li>
+                    <div class="categories-item">
+                        <a href="shop.html?loai=${encodeURIComponent(id)}"
+                           class="text-dark"
+                           data-category="${id}">
+                            <i class="fas fa-book-open text-danger me-2"></i>
+                            ${esc(name)}
+                        </a>
+                        <span>(${count})</span>
+                    </div>
+                </li>`;
+        }).join('');
+
+        container.innerHTML = allItem + categoryItems;
+
+       
+container.querySelectorAll('[data-category]').forEach(link => {
+    link.addEventListener('click', event => {
+        event.preventDefault();
+
+        const categoryId = link.dataset.category || '';
+
+        // Cáº­p nháº­t thá»ƒ loáº¡i Ä‘ang chá»n
+        state.category = categoryId;
+
+        // Chuyá»ƒn vá» trang Ä‘áº§u tiÃªn
+        currentBookPage = 1;
+
+        // Äá»“ng bá»™ vá»›i URL Ä‘á»ƒ khÃ´ng giá»¯ mÃ£ thá»ƒ loáº¡i cÅ©
+        const url = new URL(window.location.href);
+
+        if (categoryId) {
+            url.searchParams.set('loai', categoryId);
+        } else {
+            url.searchParams.delete('loai');
+        }
+
+        history.replaceState({}, '', url);
+
+        // Äá»“ng bá»™ vá»›i Ã´ chá»n thá»ƒ loáº¡i náº¿u cÃ³
+        const categorySelect = document.getElementById('api-book-category');
+        if (categorySelect) {
+            categorySelect.value = categoryId;
+        }
+
+        renderBookGrids();
+    });
+});
+
+    } catch (error) {
+        console.error('Lá»—i táº£i thá»ƒ loáº¡i:', error);
+        container.innerHTML = `
+            <li class="text-danger">
+                KhÃ´ng táº£i Ä‘Æ°á»£c danh sÃ¡ch thá»ƒ loáº¡i sÃ¡ch.
+            </li>`;
+    }
+}
+function setupPriceFilter() {
+    const range = document.getElementById('rangeInput');
+    const amount = document.getElementById('amount');
+    const resetButton = document.getElementById('reset-price-filter');
+
+    if (!range) return;
+
+    function formatPrice(value) {
+        return Number(value).toLocaleString('vi-VN') + 'Ä‘';
+    }
+
+    function updatePriceFilter() {
+        if (amount) {
+            amount.textContent = formatPrice(range.value);
+        }
+
+        // ÄÆ°a trang cá»­a hÃ ng vá» trang Ä‘áº§u khi thay Ä‘á»•i giÃ¡
+        if (typeof currentBookPage !== 'undefined') {
+            currentBookPage = 1;
+        }
+
+        renderBookGrids();
+    }
+
+    range.addEventListener('input', updatePriceFilter);
+
+    if (resetButton) {
+        resetButton.addEventListener('click', function () {
+            range.value = range.max;
+            updatePriceFilter();
+        });
+    }
+
+    updatePriceFilter();
+}
+
+  let currentBookPage = 1;
+const BOOKS_PER_PAGE = 12;
+const MAX_VISIBLE_PAGES = 5;
+
+
+function renderBookGrids() {
+    const search =
+        document.getElementById('api-book-search') ||
+        document.getElementById('search-book-name');
+
+    const sort = $('#book-sort');
+    const params = new URLSearchParams(window.location.search);
+
+    // Nháº­n cáº£ hai tÃªn tham sá»‘ URL
+    const urlKeyword =
+        params.get('keyword') ||
+        params.get('q') ||
+        '';
+
+    // Æ¯u tiÃªn tá»« khÃ³a trÃªn URL khi vá»«a chuyá»ƒn tá»« trang chá»§ sang Shop
+    const keyword = (
+        urlKeyword ||
+        search?.value?.trim() ||
+        ''
+    ).toLocaleLowerCase('vi');
+
+    // Äá»c Ä‘Ãºng mÃ£ thá»ƒ loáº¡i tá»« URL hoáº·c dropdown
+    const categorySelect =
+        document.getElementById('search-book-category') ||
+        document.getElementById('api-book-category');
+
+    const category =
+        params.get('loai') ||
+        categorySelect?.value ||
+        state.category ||
+        '';
+
+    const sortType = sort ? sort.value : 'default';
+
+    
+    function getCategoryId(item) {
+    const category =
+        item?.maTheLoaiNavigation ??
+        item?.MaTheLoaiNavigation ??
+        item?.theLoai ??
+        item?.TheLoai ??
+        item?.theLoaiSach ??
+        item?.TheLoaiSach;
+
+    return (
+        item?.maTheLoai ??
+        item?.MaTheLoai ??
+        item?.theLoaiId ??
+        item?.TheLoaiId ??
+        item?.idTheLoai ??
+        item?.IdTheLoai ??
+        category?.maTheLoai ??
+        category?.MaTheLoai ??
+        category?.theLoaiId ??
+        category?.TheLoaiId ??
+        category?.id ??
+        category?.Id ??
+        null
+    );
+}
+
+    const getPrice = book =>
+        Number(book.gia ?? book.Gia ?? book.price ?? 0);
+
+    const getQuantity = book =>
+        Number(book.soLuong ?? book.SoLuong ?? book.quantity ?? 0);
+
+    const getYear = book =>
+        Number(book.namXuatBan ?? book.NamXuatBan ?? book.year ?? 0);
+
+    // 1. Lá»c sÃ¡ch
+    let books = (state.books || []).filter(book => {
+    const title = String(bookTitle(book) || '')
+        .trim()
+        .toLocaleLowerCase('vi');
+
+    const matchesKeyword =
+        !keyword || title.includes(keyword);
+
+    const bookCategoryId = getCategoryId(book);
+    const bookCategoryName = getCategoryName(book);
+
+    const selectedCategory = (
+        document.querySelector(
+            '#api-book-categories [data-category="' + category + '"]'
+        )?.textContent || ''
+    ).trim().toLocaleLowerCase('vi');
+
+    const matchesCategory =
+        !category ||
+        (
+            bookCategoryId != null &&
+            String(bookCategoryId) === String(category)
+        ) ||
+        (
+            bookCategoryName !== '' &&
+            selectedCategory !== '' &&
+            bookCategoryName.includes(selectedCategory)
+        );
+
+    console.log({
+        tenSach: bookTitle(book),
+        maTheLoaiSach: bookCategoryId,
+        maTheLoaiDangChon: category,
+        matchesKeyword,
+        matchesCategory
+    });
+
+    return matchesKeyword && matchesCategory;
+});
+
+    // 2. Sáº¯p xáº¿p
+    switch (sortType) {
+        case 'name-asc':
+            books.sort((a, b) =>
+                String(bookTitle(a)).localeCompare(
+                    String(bookTitle(b)), 'vi'
+                )
+            );
+            break;
+
+        case 'name-desc':
+            books.sort((a, b) =>
+                String(bookTitle(b)).localeCompare(
+                    String(bookTitle(a)), 'vi'
+                )
+            );
+            break;
+
+        case 'price-asc':
+            books.sort((a, b) => getPrice(a) - getPrice(b));
+            break;
+
+        case 'price-desc':
+            books.sort((a, b) => getPrice(b) - getPrice(a));
+            break;
+
+        case 'quantity-desc':
+            books.sort((a, b) => getQuantity(b) - getQuantity(a));
+            break;
+
+        case 'year-desc':
+            books.sort((a, b) => getYear(b) - getYear(a));
+            break;
+    }
+
+    // 3. TÃ­nh phÃ¢n trang
+    const totalBooks = books.length;
+    const totalPages = Math.ceil(totalBooks / BOOKS_PER_PAGE);
+
+    if (totalPages === 0) {
+        currentBookPage = 1;
+    } else {
+        currentBookPage = Math.max(
+            1,
+            Math.min(currentBookPage, totalPages)
+        );
+    }
+
+    const startIndex = (currentBookPage - 1) * BOOKS_PER_PAGE;
+    const pageBooks = books.slice(
+        startIndex,
+        startIndex + BOOKS_PER_PAGE
+    );
+
+    // 4. Trang chá»§: giá»¯ cÃ¡ch hiá»ƒn thá»‹ 8 sÃ¡ch
+    const homeEl = $('#api-books-home');
+
+    if (homeEl) {
+        const homeBooks = keyword || category
+            ? books.slice(0, 8)
+            : books.slice(0, 8);
+
+        homeEl.innerHTML = homeBooks.length
+            ? homeBooks.map(card).join('')
+            : '<p class="text-muted">KhÃ´ng tÃ¬m tháº¥y sÃ¡ch phÃ¹ há»£p.</p>';
+    }
+
+    // 5. Hiá»ƒn thá»‹ sÃ¡ch cá»§a trang hiá»‡n táº¡i trong shop.html
+    const gridEl = $('#api-books-grid');
+
+    if (gridEl) {
+        gridEl.innerHTML = pageBooks.length
+            ? pageBooks.map(card).join('')
+            : `<div class="col-12">
+                 <p class="text-muted">KhÃ´ng tÃ¬m tháº¥y sÃ¡ch phÃ¹ há»£p.</p>
+               </div>`;
+
+        // Táº¡o vÃ¹ng phÃ¢n trang náº¿u chÆ°a cÃ³
+        let pagination = $('#api-book-pagination');
+
+        if (!pagination) {
+            pagination = document.createElement('nav');
+            pagination.id = 'api-book-pagination';
+            pagination.setAttribute('aria-label', 'PhÃ¢n trang sÃ¡ch');
+            gridEl.insertAdjacentElement('afterend', pagination);
+        }
+
+        // Táº¡o tá»‘i Ä‘a 5 sá»‘ trang
+        let paginationHTML = '';
+
+        if (totalPages > 1) {
+            let startPage = Math.max(
+                1,
+                currentBookPage - Math.floor(MAX_VISIBLE_PAGES / 2)
+            );
+
+            let endPage = Math.min(
+                totalPages,
+                startPage + MAX_VISIBLE_PAGES - 1
+            );
+
+            startPage = Math.max(
+                1,
+                endPage - MAX_VISIBLE_PAGES + 1
+            );
+
+            const button = (page, label, disabled = false, active = false) => `
+                <button
+                    type="button"
+                    class="btn ${active ? 'btn-primary' : 'btn-outline-primary'} mx-1"
+                    data-page="${page}"
+                    ${disabled ? 'disabled' : ''}
+                    ${active ? 'aria-current="page"' : ''}
+                    aria-label="${label}">
+                    ${label}
+                </button>
+            `;
+
+            paginationHTML += `
+                <div class="d-flex justify-content-center align-items-center flex-wrap gap-1 mt-4 mb-4">
+                    ${button(1, '&laquo;', currentBookPage === 1)}
+                    ${button(
+                        currentBookPage - 1,
+                        '&lsaquo;',
+                        currentBookPage === 1
+                    )}
+            `;
+
+            for (let page = startPage; page <= endPage; page++) {
+                paginationHTML += button(
+                    page,
+                    page,
+                    false,
+                    page === currentBookPage
+                );
+            }
+
+            paginationHTML += `
+                    ${button(
+                        currentBookPage + 1,
+                        '&rsaquo;',
+                        currentBookPage === totalPages
+                    )}
+                    ${button(
+                        totalPages,
+                        '&raquo;',
+                        currentBookPage === totalPages
+                    )}
+                </div>
+            `;
+        }
+
+        pagination.innerHTML = paginationHTML;
+
+        // Gáº¯n sá»± kiá»‡n cho cÃ¡c nÃºt phÃ¢n trang
+        pagination.querySelectorAll('button[data-page]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const page = Number(btn.dataset.page);
+
+                if (
+                    page < 1 ||
+                    page > totalPages ||
+                    page === currentBookPage
+                ) {
+                    return;
+                }
+
+                currentBookPage = page;
+                renderBookGrids();
+
+                // Cuá»™n vá» Ä‘áº§u danh sÃ¡ch sÃ¡ch
+                gridEl.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start'
+                });
+            });
+        });
+    }
+
+    // 6. Cáº­p nháº­t thÃ´ng bÃ¡o
+    const status = $('#api-book-status');
+
+    if (status) {
+        if (totalBooks === 0) {
+            status.textContent = 'KhÃ´ng tÃ¬m tháº¥y sÃ¡ch phÃ¹ há»£p.';
+        } else {
+            const from = startIndex + 1;
+            const to = Math.min(startIndex + BOOKS_PER_PAGE, totalBooks);
+
+            status.textContent =
+                `Hiá»ƒn thá»‹ ${from}â€“${to} trong tá»•ng sá»‘ ${totalBooks} cuá»‘n sÃ¡ch.`;
+        }
+    }
+}
+
+
+function renderGuestCart() {
+    const tbody = document.querySelector('#api-cart-body');
+    if (!tbody) return;
+
+    const cart = getGuestCart();
+
+    if (!cart.length) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" class="text-center py-4">
+                    Giá» hÃ ng Ä‘ang trá»‘ng.
+                    <a href="shop.html">Tiáº¿p tá»¥c mua sÃ¡ch</a>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    let total = 0;
+
+    tbody.innerHTML = cart.map(item => {
+        const id = Number(item.MaSach);
+        const quantity = Number(item.SoLuong || 1);
+        const price = Number(item.Gia || 0);
+        const subtotal = price * quantity;
+
+        total += subtotal;
+
+        return `<tr>
+            <td>
+                <div class="d-flex align-items-center">
+                    <img
+                        src="${escapeCartText(item.HinhAnh || 'image/ThuVien.jpg')}"
+                        alt="${escapeCartText(item.TenSach || 'SÃ¡ch')}"
+                        class="img-fluid me-3 rounded"
+                        style="width:80px;height:100px;object-fit:contain;"
+                        onerror="this.onerror=null;this.src='image/ThuVien.jpg';"
+                    >
+                    <span>${escapeCartText(item.TenSach || 'SÃ¡ch')}</span>
+                </div>
+            </td>
+            <td>${item.MaSach}</td>
+            <td>${Number(item.Gia || 0).toLocaleString('vi-VN')} Ä‘</td>
+            <td>
+                <div class="d-flex align-items-center">
+                    <button class="btn btn-sm btn-light"
+                            data-cart-change="${item.MaSach}"
+                            data-delta="-1" type="button">âˆ’</button>
+                    <span class="mx-2">${Number(item.SoLuong || 1)}</span>
+                    <button class="btn btn-sm btn-light"
+                            data-cart-change="${item.MaSach}"
+                            data-delta="1" type="button">+</button>
+                </div>
+            </td>
+            <td>${(Number(item.Gia || 0) * Number(item.SoLuong || 1)).toLocaleString('vi-VN')} Ä‘</td>
+            <td>
+                <button class="btn btn-sm btn-danger"
+                        data-cart-remove="${item.MaSach}"
+                        type="button">XÃ³a</button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    // Cáº­p nháº­t tá»•ng tiá»n trong khu vá»±c tá»•ng giá» hÃ ng
+    const summary = document.querySelector('.col-sm-8.col-md-7.col-lg-6.col-xl-4 .bg-light');
+    if (summary) {
+        const rows = summary.querySelectorAll('.d-flex.justify-content-between');
+        if (rows.length > 0) {
+            rows[0].lastElementChild.textContent =
+                total.toLocaleString('vi-VN') + ' Ä‘';
+        }
+
+        const totalRow = summary.querySelector(
+            '.py-4.mb-4.border-top.border-bottom'
+        );
+
+        if (totalRow) {
+            totalRow.lastElementChild.textContent =
+                total.toLocaleString('vi-VN') + ' Ä‘';
+        }
+    }
+}
+
+function escapeCartText(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    })[char]);
+}
+
+
+document.addEventListener('click', async function (e) {
+    const changeButton = e.target.closest('[data-cart-change]');
+    const removeButton = e.target.closest('[data-cart-remove]');
+
+    if (!changeButton && !removeButton) return;
+
+    e.preventDefault();
+
+    const user = getUser();
+    const customerId = user?.maKhachHang ?? user?.MaKhachHang;
+
+    // XÃ“A SÃCH
+    if (removeButton) {
+        const id = Number(removeButton.dataset.cartRemove);
+
+        if (customerId != null) {
+            // NgÆ°á»i dÃ¹ng Ä‘Ã£ Ä‘Äƒng nháº­p: xÃ³a qua API
+            try {
+                const user = getUser();
+                    const customerId = user?.maKhachHang ?? user?.MaKhachHang;
+
+                    let url = '/cart/delete/' + encodeURIComponent(id);
+
+                    if (customerId != null) {
+                        url += '?maKhachHang=' + encodeURIComponent(customerId);
+                    }
+
+                    console.log('User:', user);
+                    console.log('MÃ£ khÃ¡ch hÃ ng:', customerId);
+                    console.log('URL xÃ³a:', API + url);
+
+                    await request(url, {
+                        method: 'DELETE'
+                    });
+
+                await loadCart();
+                updateCartBadge();
+                notice('ÄÃ£ xÃ³a khá»i giá» hÃ ng');
+            } catch (err) {
+                console.error('Lá»—i xÃ³a sÃ¡ch:', err);
+                notice(err.message || 'KhÃ´ng thá»ƒ xÃ³a sÃ¡ch', 'error');
+            }
+        } else {
+            // KhÃ¡ch chÆ°a Ä‘Äƒng nháº­p: xÃ³a trong sessionStorage
+            let cart = getGuestCart();
+
+            cart = cart.filter(item =>
+                Number(item.MaSach ?? item.maSach) !== id
+            );
+
+            saveGuestCart(cart);
+            await loadCart();
+            updateCartBadge();
+            notice('ÄÃ£ xÃ³a khá»i giá» hÃ ng');
+        }
+
+        return;
+    }
+
+    // TÄ‚NG / GIáº¢M Sá» LÆ¯á»¢NG
+    const id = Number(changeButton.dataset.cartChange);
+    const delta = Number(changeButton.dataset.delta);
+
+    if (customerId != null) {
+        await changeQty(id, delta);
+    } else {
+        let cart = getGuestCart();
+
+        const item = cart.find(
+            x => Number(x.MaSach ?? x.maSach) === id
+        );
+
+        if (item) {
+            item.SoLuong = Number(item.SoLuong ?? item.soLuong ?? 1) + delta;
+
+            if (item.SoLuong <= 0) {
+                cart = cart.filter(
+                    x => Number(x.MaSach ?? x.maSach) !== id
+                );
+            }
+        }
+
+        saveGuestCart(cart);
+        await loadCart();
+        updateCartBadge();
+    }
+});
+
+
+
+async function handleAddBookToCart(book) {
+    const user = getUser();
+
+    // ChÆ°a Ä‘Äƒng nháº­p: lÆ°u giá» hÃ ng vÃ o sessionStorage
+    if (!user) {
+        addGuestBook(book);
+        notice('ÄÃ£ thÃªm sÃ¡ch vÃ o giá» hÃ ng.');
+        return;
+    }
+
+    try {
+        const customerId = Number(
+            user.maKhachHang ??
+            user.MaKhachHang ??
+            user.id ??
+            user.Id
+        );
+
+        if (!Number.isInteger(customerId) || customerId <= 0) {
+            console.error('ThÃ´ng tin ngÆ°á»i dÃ¹ng:', user);
+            notice('KhÃ´ng tÃ¬m tháº¥y mÃ£ khÃ¡ch hÃ ng. Vui lÃ²ng Ä‘Äƒng nháº­p láº¡i.');
+            return;
+        }
+
+        const bookId = Number(
+            book.maSach ??
+            book.MaSach ??
+            book.id ??
+            book.Id
+        );
+
+        if (!Number.isInteger(bookId) || bookId <= 0) {
+            console.error('ThÃ´ng tin sÃ¡ch:', book);
+            notice('KhÃ´ng xÃ¡c Ä‘á»‹nh Ä‘Æ°á»£c mÃ£ sÃ¡ch.');
+            return;
+        }
+
+        await request(
+            `/cart/customer/add?maKhachHang=${customerId}`,
+            {
+                method: 'POST',
+                body: {
+                    MaSach: bookId
+                }
+            }
+        );
+
+        await loadCart();
+        updateCartBadge();
+
+        notice('ÄÃ£ thÃªm sÃ¡ch vÃ o giá» hÃ ng.');
+
+        // Cáº­p nháº­t giá» hÃ ng náº¿u hÃ m táº£i giá» Ä‘Ã£ Ä‘Æ°á»£c Ä‘á»‹nh nghÄ©a
+        if (typeof loadCart === 'function') {
+            await loadCart();
+        }
+
+        // Cáº­p nháº­t sá»‘ lÆ°á»£ng hiá»ƒn thá»‹ trÃªn biá»ƒu tÆ°á»£ng giá» hÃ ng
+        updateCartBadge();
+
+    } catch (error) {
+        console.error('Lá»—i thÃªm sÃ¡ch vÃ o giá»:', error);
+        notice(error.message || 'KhÃ´ng thá»ƒ thÃªm sÃ¡ch vÃ o giá» hÃ ng.');
+    }
+}
+
+
+async function syncGuestCartToDatabase() {
+    const user = getUser();
+
+    if (!user) return;
+
+    const customerId = Number(
+        user.maKhachHang ??
+        user.MaKhachHang ??
+        user.id ??
+        user.Id
+    );
+
+    if (!customerId) {
+        throw new Error('KhÃ´ng tÃ¬m tháº¥y mÃ£ khÃ¡ch hÃ ng.');
+    }
+
+    const guestCart = getGuestCart();
+
+    if (guestCart.length === 0) return;
+
+    for (const item of guestCart) {
+        const bookId = Number(item.MaSach);
+        const quantity = Math.max(1, Number(item.SoLuong || 1));
+
+        // API hiá»‡n táº¡i thÃªm má»™t Ä‘Æ¡n vá»‹ sÃ¡ch má»—i láº§n gá»i.
+        // Gá»i nhiá»u láº§n Ä‘á»ƒ chuyá»ƒn Ä‘á»§ sá»‘ lÆ°á»£ng tá»« giá» khÃ¡ch.
+        for (let i = 0; i < quantity; i++) {
+            await request(
+                `/cart/customer/add?maKhachHang=${customerId}`,
+                {
+                    method: 'POST',
+                    body: JSON.stringify({ MaSach: bookId })
+                }
+            );
+        }
+    }
+
+    // Chá»‰ xÃ³a giá» táº¡m khi Ä‘á»“ng bá»™ thÃ nh cÃ´ng toÃ n bá»™
+    sessionStorage.removeItem(GUEST_CART_KEY);
+
+    updateGuestCartCount();
+
+    // Táº£i giá» hÃ ng chÃ­nh thá»©c tá»« database
+    if (typeof loadCart === 'function') {
+        await loadCart();
+    }
+
+    notice('ÄÃ£ Ä‘á»“ng bá»™ giá» hÃ ng thÃ nh cÃ´ng.');
+}
+
+
+const GUEST_CART_KEY = 'apiq-guest-cart';
+
+// Láº¥y giá» hÃ ng khÃ¡ch vÃ£ng lai tá»« sessionStorage
+function getGuestCart() {
+    try {
+        return JSON.parse(
+            sessionStorage.getItem(GUEST_CART_KEY) || '[]'
+        );
+    } catch {
+        return [];
+    }
+}
+
+// LÆ°u giá» hÃ ng khÃ¡ch vÃ£ng lai
+function saveGuestCart(cart) {
+    sessionStorage.setItem(
+        GUEST_CART_KEY,
+        JSON.stringify(cart)
+    );
+}
+
+// ThÃªm sÃ¡ch vÃ o giá» hÃ ng khÃ¡ch vÃ£ng lai
+
+
+
+
+async function addGuestBook(book) {
+    const id = Number(
+        book.maSach ?? book.MaSach ?? book.id ?? book.Id
+    );
+
+    if (!id) {
+        notice('KhÃ´ng xÃ¡c Ä‘á»‹nh Ä‘Æ°á»£c mÃ£ sÃ¡ch.');
+        return;
+    }
+
+    const cart = getGuestCart();
+    const existing = cart.find(
+        item => Number(item.MaSach) === id
+    );
+
+    if (existing) {
+        existing.SoLuong = Number(existing.SoLuong || 1) + 1;
+        existing.HinhAnh = bookImage(book);
+    } else {
+        cart.push({
+            MaSach: id,
+            SoLuong: 1,
+            TenSach: book.tenSach ?? book.TenSach ?? '',
+            Gia: Number(book.gia ?? book.Gia ?? 0),
+            HinhAnh: bookImage(book)
+        });
+    }
+
+    saveGuestCart(cart);
+
+    if (typeof renderGuestCart === 'function') {
+        renderGuestCart();
+    }
+
+    notice('ÄÃ£ thÃªm sÃ¡ch vÃ o giá» hÃ ng.');
+}
+
+
+// Cáº­p nháº­t sá»‘ lÆ°á»£ng sÃ¡ch trÃªn biá»ƒu tÆ°á»£ng giá» hÃ ng
+function updateGuestCartCount() {
+    const user = getUser();
+
+    // Náº¿u chÆ°a Ä‘Äƒng nháº­p thÃ¬ láº¥y sá»‘ lÆ°á»£ng tá»« sessionStorage
+    if (!user) {
+        const count = getGuestCart().reduce(
+            (sum, item) => sum + Number(item.SoLuong || 1),
+            0
+        );
+
+        document.querySelectorAll('.api-cart-count').forEach(el => {
+            el.textContent = count;
+        });
+    }
+}
+
+
+// Gáº¯n sá»± kiá»‡n tÃ¬m kiáº¿m má»™t láº§n
+
+function bindBookSearch() {
+    const search = $('#api-book-search');
+
+    if (!search || search.dataset.bound === '1') return;
+
+    search.dataset.bound = '1';
+
+    // TÃ¬m ngay khi ngÆ°á»i dÃ¹ng nháº­p
+    search.addEventListener('input', renderBookGrids);
+
+    // Báº¥m kÃ­nh lÃºp Ä‘á»ƒ tÃ¬m
+    const icon = $('#search-icon-1');
+
+    if (icon && !icon.dataset.bound) {
+        icon.dataset.bound = '1';
+
+        icon.addEventListener('click', renderBookGrids);
+    }
+
+    const sort = $('#book-sort');
+
+if (sort && !sort.dataset.bound) {
+    sort.dataset.bound = '1';
+    sort.addEventListener('change', renderBookGrids);
+}
+
+    // Nháº¥n Enter Ä‘á»ƒ tÃ¬m
+    search.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+            renderBookGrids();
+        }
+    });
+}
+
+
+
+function bindBookViewMode() {
+    const gridButton = document.querySelector('#book-grid-view');
+    const listButton = document.querySelector('#book-list-view');
+    const bookGrid = document.querySelector('#api-books-grid');
+
+    if (!gridButton || !listButton || !bookGrid) return;
+
+    gridButton.addEventListener('click', function (event) {
+        event.preventDefault();
+
+        bookGrid.classList.remove('book-list-view');
+        gridButton.classList.add('active');
+        listButton.classList.remove('active');
+    });
+
+    listButton.addEventListener('click', function (event) {
+        event.preventDefault();
+
+        bookGrid.classList.add('book-list-view');
+        listButton.classList.add('active');
+        gridButton.classList.remove('active');
+    });
+}
+
+
+
+async function loadCart() {
+    const user = getUser();
+
+    console.log('[Giá» hÃ ng] NgÆ°á»i dÃ¹ng:', user);
+
+    try {
+        if (user && idOf(user)) {
+            // ÄÃ£ Ä‘Äƒng nháº­p: láº¥y giá» hÃ ng tá»« database
+            const customerId = idOf(user);
+
+            const data = await request(
+                `/cart/customer/${customerId}`
+            );
+
+            console.log('[Giá» hÃ ng] API tráº£ vá»:', data);
+
+            const result = unwrap(data);
+
+            // Há»— trá»£ API tráº£ vá» máº£ng trá»±c tiáº¿p hoáº·c bá»c trong data/result/items
+            const items = Array.isArray(result)
+                ? result
+                : result?.items ?? result?.Items;
+
+            state.cart = Array.isArray(items) ? items : [];
+        } else {
+            // ChÆ°a Ä‘Äƒng nháº­p: láº¥y giá» hÃ ng tá»« sessionStorage
+            state.cart = getGuestCart();
+        }
+    } catch (error) {
+        console.error('[Giá» hÃ ng] Lá»—i táº£i:', error);
+
+        state.cart = [];
+
+        notice(
+            error.message || 'KhÃ´ng táº£i Ä‘Æ°á»£c giá» hÃ ng.',
+            'error'
+        );
+    }
+
+    renderCart();
+    updateCartBadge();
+
+    console.log('[Giá» hÃ ng] Dá»¯ liá»‡u cuá»‘i cÃ¹ng:', state.cart);
+
+    return state.cart;
+}
+
+ function cId(x){return x?.maSach??x?.MaSach; } function cQty(x){return x?.soLuong??x?.SoLuong??1;} function cName(x){return x?.tenSach??x?.TenSach??'SÃ¡ch';} function cPrice(x){return x?.gia??x?.Gia??x?.donGia??x?.DonGia??0;} function cImg(x){return x?.hinh??x?.Hinh??x?.anhBia??x?.AnhBia??'';}
+ function cartTotal(){return state.cart.reduce((s,x)=>s+Number(cPrice(x))*Number(cQty(x)),0);}
+ function updateCartBadge(){ const count=state.cart.reduce((s,x)=>s+Number(cQty(x)),0); $$('.api-cart-count').forEach(e=>e.textContent=count); const old=$('.nav-bar .fa-shopping-cart')?.parentElement; if(old&&!old.querySelector('.api-cart-count')) old.insertAdjacentHTML('beforeend',` <span class="api-cart-count badge bg-primary">${count}</span>`); }
+ async function addCart(id){try{const u=getUser();if(u&&idOf(u)) await request('/cart/customer/add?maKhachHang='+encodeURIComponent(idOf(u)),{method:'POST',body:{MaSach:Number(id)}});else await request('/cart/guest/add',{method:'POST',body:{MaSach:Number(id)}});await loadCart();notice('ÄÃ£ thÃªm sÃ¡ch vÃ o giá» hÃ ng');}catch(e){notice(e.message,'error');}}
+ 
+
+function renderCart() {
+    const body = $('#api-cart-body');
+    if (!body) return;
+
+    const cart = Array.isArray(state.cart) ? state.cart : [];
+
+    if (cart.length === 0) {
+        body.innerHTML = `
+            <tr>
+                <td colspan="5" class="text-center py-5">
+                    Giá» hÃ ng trá»‘ng.
+                    <a href="shop.html">Tiáº¿p tá»¥c mua sÃ¡ch</a>
+                </td>
+            </tr>`;
+        updateCartTotals(0, 0);
+        return;
+    }
+
+    let totalQuantity = 0;
+    let totalPrice = 0;
+
+    body.innerHTML = cart.map(x => {
+        const book = x.sach ?? x.Sach ?? x;
+
+        const bookId =
+            x.maSach ?? x.MaSach ??
+            book.maSach ?? book.MaSach;
+
+        const name = book.tenSach ?? book.TenSach ?? 'SÃ¡ch';
+
+        const price = Number(
+            x.gia ?? x.Gia ??
+            x.donGia ?? x.DonGia ??
+            book.gia ?? book.Gia ?? 0
+        );
+
+        const qty = Number(x.soLuong ?? x.SoLuong ?? 1);
+
+        const image =
+            book.anhBia ?? book.AnhBia ??
+            book.hinhAnh ?? book.HinhAnh ?? '';
+
+        const lineTotal = price * qty;
+
+        totalQuantity += qty;
+        totalPrice += lineTotal;
+
+        return `
+            <tr>
+                <td>
+                    <div class="d-flex align-items-center">
+                        <img
+                            src="${esc(image
+                                ? (image.includes('/')
+                                    ? image
+                                    : 'image/Sach/' + image)
+                                : 'image/ThuVien.jpg')}"
+                            style="width:70px;height:80px;object-fit:contain"
+                            onerror="this.onerror=null;this.src='image/ThuVien.jpg'">
+
+                        <span class="ms-3">${esc(name)}</span>
+                    </div>
+                </td>
+
+                <td>${money(price)}</td>
+
+                <td>
+                    <div class="input-group" style="width:125px">
+                        <button
+                            type="button"
+                            class="btn btn-sm btn-outline-secondary"
+                            data-qty="${bookId}"
+                            data-delta="-1">âˆ’</button>
+
+                        <input
+                            class="form-control form-control-sm text-center"
+                            value="${qty}"
+                            readonly>
+
+                        <button
+                            type="button"
+                            class="btn btn-sm btn-outline-secondary"
+                            data-qty="${bookId}"
+                            data-delta="1">+</button>
+                    </div>
+                </td>
+
+                <td>${money(lineTotal)}</td>
+
+                <td>
+                    <button
+                        type="button"
+                        data-cart-remove="${bookId}">
+                        <i class="fa fa-trash"></i>
+                    </button>
+                </td>
+            </tr>`;
+    }).join('');
+
+    updateCartTotals(totalPrice, totalQuantity);
+}
+
+
+
+function updateCartTotals(totalPrice, totalQuantity) {
+    // Tá»•ng tiá»n á»Ÿ pháº§n Cart Total
+    const total = $('#api-cart-total');
+    if (total) {
+        total.textContent = money(totalPrice);
+    }
+
+    // Tá»•ng sá»‘ lÆ°á»£ng sÃ¡ch trong giá» hÃ ng
+    const quantityElement = $('#api-cart-quantity');
+    if (quantityElement) {
+        quantityElement.textContent = totalQuantity;
+    }
+
+    // Tá»•ng tiá»n á»Ÿ pháº§n checkout náº¿u cÃ³
+    const checkoutTotal = $('#api-checkout-total');
+    if (checkoutTotal) {
+        checkoutTotal.textContent = money(totalPrice);
+    }
+
+    // Táº¡m tÃ­nh náº¿u template cÃ³ pháº§n tá»­ nÃ y
+    const subtotal = $('#api-cart-subtotal');
+    if (subtotal) {
+        subtotal.textContent = money(totalPrice);
+    }
+}
+
+
+async function changeQty(id, delta) {
+    try {
+        const user = getUser();
+        const customerId =
+            user?.maKhachHang ??
+            user?.MaKhachHang;
+
+        let url =
+            '/cart/capnhatsoluong?maSach=' +
+            encodeURIComponent(id) +
+            '&quantity=' +
+            encodeURIComponent(delta);
+
+        if (customerId != null) {
+            url += '&maKhachHang=' +
+                encodeURIComponent(customerId);
+        }
+
+        console.log('NgÆ°á»i dÃ¹ng:', user);
+        console.log('MÃ£ khÃ¡ch hÃ ng:', customerId);
+        console.log('URL cáº­p nháº­t:', url);
+
+        const result = await request(url, {
+            method: 'PUT'
+        });
+
+        console.log('Káº¿t quáº£:', result);
+
+        await loadCart();
+        updateCartBadge();
+    } catch (e) {
+        console.error('Lá»—i cáº­p nháº­t sá»‘ lÆ°á»£ng:', e);
+        notice(e.message || 'KhÃ´ng cáº­p nháº­t Ä‘Æ°á»£c sá»‘ lÆ°á»£ng.', 'error');
+    }
+}
+
+
+ 
+
+async function removeCart(id) {
+    try {
+        const user = getUser();
+        const customerId = user?.maKhachHang ?? user?.MaKhachHang;
+
+        let url = '/cart/delete/' + encodeURIComponent(id);
+
+        if (customerId != null) {
+            url += '?maKhachHang=' + encodeURIComponent(customerId);
+        }
+
+        console.log('User hiá»‡n táº¡i:', user);
+    console.log('MÃ£ khÃ¡ch hÃ ng:', customerId);
+    console.log('MÃ£ sÃ¡ch cáº§n xÃ³a:', id);
+        await request(url, { method: 'DELETE' });
+
+        await loadCart();
+        updateCartBadge();
+        notice('ÄÃ£ xÃ³a sÃ¡ch khá»i giá» hÃ ng!');
+    } catch (e) {
+        console.error('Lá»—i xÃ³a sÃ¡ch:', e);
+        notice(e.message, 'error');
+    }
+}
+
+
+ function formPage(title,body){let main=$('#api-page-content');if(!main){main=document.createElement('div');main.id='api-page-content';main.className='container py-5';const target=$('main')||$('.container-fluid.py-5')||$('body');target.prepend(main);}main.innerHTML=`<div class="row justify-content-center"><div class="col-lg-8"><div class="bg-light rounded p-4 p-md-5"><h2 class="mb-4 text-center">${title}</h2>${body}</div></div></div>`;return main;}
+ function bindForm(id,fn){const f=$('#'+id);if(f)f.addEventListener('submit',async e=>{e.preventDefault();const btn=f.querySelector('[type=submit]');if(btn)btn.disabled=true;try{await fn(new FormData(f),f);}catch(err){notice(err.message,'error');}finally{if(btn)btn.disabled=false;}});}
+
+function initLogin() {
+    formPage('ÄÄƒng nháº­p', `
+        <form id="api-login-form">
+            <div class="mb-3">
+                <label class="form-label">TÃªn Ä‘Äƒng nháº­p</label>
+                <input class="form-control"
+                       name="UserName"
+                       required minlength="3" maxlength="20"
+                       autocomplete="username">
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Máº­t kháº©u</label>
+                <input class="form-control"
+                       name="Password"
+                       type="password"
+                       required
+                       autocomplete="current-password">
+            </div>
+
+            <button class="btn btn-primary rounded-pill w-100"
+                    type="submit">
+                ÄÄƒng nháº­p
+            </button>
+
+            <p class="mt-3 mb-0 text-center">
+                ChÆ°a cÃ³ tÃ i khoáº£n?
+                <a href="register.html">ÄÄƒng kÃ½</a>
+            </p>
+        </form>
+    `);
+
+
+    bindForm('api-login-form', async fd => {
+        const d = await request('/KhachHang/login', {
+            method: 'POST',
+            body: {
+                UserName: fd.get('UserName'),
+                Password: fd.get('Password')
+            }
+        });
+
+        const u = unwrap(d);
+
+        if (!u) {
+            throw new Error('API khÃ´ng tráº£ vá» thÃ´ng tin ngÆ°á»i dÃ¹ng.');
+        }
+
+        // LÆ°u thÃ´ng tin Ä‘Äƒng nháº­p
+        setUser(u);
+
+        // KhÃ´ng yÃªu cáº§u xÃ¡c thá»±c OTP khi Ä‘Äƒng nháº­p
+        sessionStorage.removeItem('apiq-pending-user');
+
+        // Äá»“ng bá»™ giá» hÃ ng khÃ¡ch vÃ£ng lai vÃ o database
+        const customerId = idOf(u);
+
+        if (customerId) {
+            try {
+                await request('/cart/guest/to-db/' + customerId, {
+                    method: 'POST'
+                });
+
+                sessionStorage.removeItem('apiq-guest-cart');
+            } catch (e) {
+                console.error('Lá»—i Ä‘á»“ng bá»™ giá» hÃ ng:', e);
+                notice('ÄÄƒng nháº­p thÃ nh cÃ´ng nhÆ°ng chÆ°a Ä‘á»“ng bá»™ Ä‘Æ°á»£c giá» hÃ ng.');
+            }
+        }
+
+        // Chuyá»ƒn tháº³ng vÃ o trang chá»§
+        location.href = 'index.html';
+    });
+
+}
+
+ function initRegister(){formPage('Táº¡o tÃ i khoáº£n',`<form id="api-register-form"><div class="mb-3"><label class="form-label">TÃªn Ä‘Äƒng nháº­p</label><input class="form-control" name="TenDangNhap" required minlength="3" maxlength="20"></div><div class="mb-3"><label class="form-label">Há» vÃ  tÃªn</label><input class="form-control" name="TenKhachHang" required></div><div class="mb-3"><label class="form-label">Email</label><input class="form-control" name="Email" type="email" required></div><div class="mb-3"><label class="form-label">Sá»‘ Ä‘iá»‡n thoáº¡i</label><input class="form-control" name="SoDienThoai" required pattern="0[3578][0-9]{8}"></div><div class="mb-3"><label class="form-label">Máº­t kháº©u (Ã­t nháº¥t 6 kÃ½ tá»±)</label><input class="form-control" name="MatKhau" type="password" minlength="6" required></div><div class="mb-3"><label class="form-label">Nháº­p láº¡i máº­t kháº©u</label><input class="form-control" name="KiemTraMatKhau" type="password" minlength="6" required></div><button class="btn btn-primary rounded-pill w-100" type="submit">ÄÄƒng kÃ½ vÃ  gá»­i OTP</button><p class="mt-3 text-center">ÄÃ£ cÃ³ tÃ i khoáº£n? <a href="login.html">ÄÄƒng nháº­p</a></p></form>`);bindForm('api-register-form',async fd=>{if(fd.get('MatKhau')!==fd.get('KiemTraMatKhau'))throw Error('Máº­t kháº©u nháº­p láº¡i khÃ´ng khá»›p');const d=await request('/KhachHang/signin',{method:'POST',body:Object.fromEntries(fd.entries())});const u=unwrap(d);sessionStorage.setItem('apiq-pending-user',JSON.stringify(u));notice('ÄÄƒng kÃ½ thÃ nh cÃ´ng. HÃ£y nháº­p OTP Ä‘Æ°á»£c gá»­i qua email.');location.href='verify-otp.html';});}
+ function initOtp(){const pending=(()=>{try{return JSON.parse(sessionStorage.getItem('apiq-pending-user')||'null')}catch{return null}})();const id=idOf(pending);formPage('XÃ¡c thá»±c OTP email',`<p class="text-center">Nháº­p mÃ£ OTP Ä‘Ã£ gá»­i Ä‘áº¿n email Ä‘Äƒng kÃ½.</p><form id="api-otp-form"><div class="mb-3"><label class="form-label">MÃ£ OTP</label><input class="form-control text-center" name="OTP" required maxlength="10" autocomplete="one-time-code"></div><button class="btn btn-primary rounded-pill w-100" type="submit">XÃ¡c thá»±c email</button></form><button id="api-resend-otp" class="btn btn-outline-primary rounded-pill w-100 mt-3">Gá»­i láº¡i OTP</button><p class="small text-muted mt-3">Náº¿u báº¡n vá»«a Ä‘Äƒng kÃ½, mÃ£ khÃ¡ch hÃ ng Ä‘Æ°á»£c lÆ°u trong phiÃªn Ä‘Äƒng kÃ½. Náº¿u táº£i láº¡i trang mÃ  máº¥t mÃ£, vui lÃ²ng Ä‘Äƒng kÃ½/Ä‘Äƒng nháº­p láº¡i Ä‘á»ƒ láº¥y thÃ´ng tin.</p>`);bindForm('api-otp-form',async fd=>{if(!id)throw Error('KhÃ´ng tÃ¬m tháº¥y mÃ£ khÃ¡ch hÃ ng Ä‘ang chá» xÃ¡c thá»±c. HÃ£y Ä‘Äƒng kÃ½ láº¡i hoáº·c Ä‘Äƒng nháº­p.');await request('/KhachHang/verify-otp/'+id,{method:'POST',body:{OTP:fd.get('OTP')}});if(pending){pending.isVerified=true;setUser(pending);}sessionStorage.removeItem('apiq-pending-user');notice('XÃ¡c thá»±c email thÃ nh cÃ´ng');location.href='login.html';});$('#api-resend-otp')?.addEventListener('click',async()=>{if(!id){notice('KhÃ´ng tÃ¬m tháº¥y mÃ£ khÃ¡ch hÃ ng. HÃ£y Ä‘Äƒng kÃ½ láº¡i.','error');return;}try{await request('/KhachHang/resend-otp/'+id,{method:'POST'});notice('ÄÃ£ gá»­i láº¡i OTP');}catch(e){notice(e.message,'error');}});}
+
+async function initProfile() {
+    formPage('ThÃ´ng tin cÃ¡ nhÃ¢n', '<p>Äang táº£i thÃ´ng tin...</p>');
+
+    const content = $('#api-page-content .bg-light');
+
+    try {
+        // Láº¥y thÃ´ng tin cá»§a khÃ¡ch hÃ ng Ä‘ang Ä‘Äƒng nháº­p tá»« API
+        const data = await request('/KhachHang/my-info');
+        const u = unwrap(data) || {};
+
+        const getValue = (lower, upper) =>
+            u[lower] ?? u[upper] ?? '';
+
+        content.innerHTML = `
+            <h2 class="mb-4 text-center">ThÃ´ng tin cÃ¡ nhÃ¢n</h2>
+
+            <form id="api-profile-form">
+                <div class="mb-3">
+                    <label class="form-label">MÃ£ khÃ¡ch hÃ ng</label>
+                    <input class="form-control"
+                        value="${esc(getValue('maKhachHang', 'MaKhachHang'))}"
+                        readonly>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">TÃªn Ä‘Äƒng nháº­p</label>
+                    <input class="form-control"
+                        value="${esc(getValue('tenDangNhap', 'TenDangNhap'))}"
+                        readonly>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Há» vÃ  tÃªn</label>
+                    <input class="form-control"
+                        name="TenKhachHang"
+                        value="${esc(getValue('tenKhachHang', 'TenKhachHang'))}"
+                        required maxlength="100">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Email</label>
+                    <input class="form-control"
+                        type="email"
+                        name="Email"
+                        value="${esc(getValue('email', 'Email'))}"
+                        readonly>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Sá»‘ Ä‘iá»‡n thoáº¡i</label>
+                    <input class="form-control"
+                        type="tel"
+                        name="SoDienThoai"
+                        value="${esc(getValue('soDienThoai', 'SoDienThoai'))}"
+                        required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Äá»‹a chá»‰</label>
+                    <input class="form-control"
+                        name="DiaChi"
+                        value="${esc(getValue('diaChi', 'DiaChi'))}">
+                </div>
+
+                <button class="btn btn-primary rounded-pill"
+                    type="submit" id="api-profile-save">
+                    LÆ°u thay Ä‘á»•i
+                </button>
+            </form>
+        `;
+
+        bindForm('api-profile-form', async fd => {
+            const button = $('#api-profile-save');
+
+            try {
+                const body = {
+                    TenKhachHang: String(
+                        fd.get('TenKhachHang') || ''
+                    ).trim(),
+
+                    SoDienThoai: String(
+                        fd.get('SoDienThoai') || ''
+                    ).trim(),
+
+                    Email: String(
+                        fd.get('Email') || ''
+                    ).trim(),
+
+                    DiaChi: String(
+                        fd.get('DiaChi') || ''
+                    ).trim()
+                };
+
+                if (!body.TenKhachHang) {
+                    notice('Vui lÃ²ng nháº­p há» vÃ  tÃªn.');
+                    return;
+                }
+
+                if (!body.SoDienThoai) {
+                    notice('Vui lÃ²ng nháº­p sá»‘ Ä‘iá»‡n thoáº¡i.');
+                    return;
+                }
+
+                button.disabled = true;
+                button.textContent = 'Äang lÆ°u...';
+
+                console.log('Dá»¯ liá»‡u cáº­p nháº­t:', body);
+
+                await request('/KhachHang/my-info', {
+                    method: 'PUT',
+                    body
+                });
+
+                notice('Cáº­p nháº­t thÃ´ng tin thÃ nh cÃ´ng!');
+
+                // Táº£i láº¡i tá»« API Ä‘á»ƒ xÃ¡c nháº­n dá»¯ liá»‡u má»›i
+                await initProfile();
+
+            } catch (error) {
+                console.error('Lá»—i cáº­p nháº­t há»“ sÆ¡:', error);
+
+                notice(
+                    error.message ||
+                    'KhÃ´ng thá»ƒ cáº­p nháº­t thÃ´ng tin cÃ¡ nhÃ¢n.'
+                );
+
+                button.disabled = false;
+                button.textContent = 'LÆ°u thay Ä‘á»•i';
+            }
+        });
+
+    } catch (error) {
+        console.error('Lá»—i táº£i há»“ sÆ¡:', error);
+
+        content.innerHTML = `
+            <div class="text-center">
+                <h3>KhÃ´ng táº£i Ä‘Æ°á»£c thÃ´ng tin cÃ¡ nhÃ¢n</h3>
+                <p>${esc(
+                    error.message ||
+                    'Vui lÃ²ng Ä‘Äƒng nháº­p láº¡i.'
+                )}</p>
+                <a href="login.html"
+                    class="btn btn-primary rounded-pill">
+                    ÄÄƒng nháº­p
+                </a>
+            </div>
+        `;
+    }
+}
+
+
+async function getVietQR(amount, maHoaDon) {
+    const params = new URLSearchParams({
+        amount: String(Math.round(Number(amount))),
+        maHoaDon: String(maHoaDon)
+    });
+
+    const response = await request(
+        `/vietqr/test?${params.toString()}`
+    );
+
+    const data = unwrap(response) || {};
+
+    const qrUrl =
+        data.qrCode ??
+        data.QRCode ??
+        data.qrUrl ??
+        data.QRUrl;
+
+    if (!qrUrl) {
+        throw new Error('API VietQR khÃ´ng tráº£ vá» Ä‘Æ°á»ng dáº«n mÃ£ QR.');
+    }
+
+    return qrUrl;
+}
+
+
+async function initFavorites() {
+    formPage('SÃ¡ch yÃªu thÃ­ch', '<p>Äang táº£i danh sÃ¡ch...</p>');
+
+    try {
+        // Kiá»ƒm tra khÃ¡ch hÃ ng Ä‘Ã£ Ä‘Äƒng nháº­p
+        const user = getUser();
+
+        if (!user || !idOf(user)) {
+            $('#api-page-content .bg-light').innerHTML = `
+                <h2 class="mb-4 text-center">SÃ¡ch yÃªu thÃ­ch</h2>
+                <div class="text-center py-4">
+                    <p>Vui lÃ²ng Ä‘Äƒng nháº­p Ä‘á»ƒ xem sÃ¡ch yÃªu thÃ­ch.</p>
+                    <a href="login.html" class="btn btn-primary rounded-pill">
+                        ÄÄƒng nháº­p
+                    </a>
+                </div>`;
+            return;
+        }
+
+        // Láº¥y danh sÃ¡ch yÃªu thÃ­ch tá»« API
+        const d = await request('/sach-yeu-thich');
+        const result = unwrap(d);
+        const list = Array.isArray(result) ? result : [];
+
+        $('#api-page-content .bg-light').innerHTML = `
+            <h2 class="mb-4 text-center">SÃ¡ch yÃªu thÃ­ch</h2>
+            <div id="api-favorites-message"></div>
+            <div class="row" id="api-favorites-list">
+                ${
+                    list.map(x => {
+                        const b = x.sach ?? x.Sach ?? x;
+                        const id = bookId(b) ?? x.maSach ?? x.MaSach;
+                        const anhBia = b.anhBia ?? b.AnhBia ?? '';
+
+                        const imagePath = anhBia
+                            ? (anhBia.startsWith('image/')
+                                ? anhBia
+                                : 'image/sach/' + anhBia.replace(/^\/+/, ''))
+                            : 'image/ThuVien.jpg';
+
+                        if (id == null) return '';
+
+                        return `
+                            <div class="col-md-6 col-lg-4 col-xl-3 mb-4">
+                                <div class="card h-100 p-3">
+                                    <img
+                                        src="${esc(
+                                            bookImage(b)
+                                                ? (bookImage(b).startsWith('image/')
+                                                    ? bookImage(b)
+                                                    : 'image/sach/' + bookImage(b).replace(/^\/+/, ''))
+                                                : 'image/ThuVien.jpg'
+                                        )}"
+                                        alt="${esc(bookTitle(b))}"
+                                        class="img-fluid"
+                                        style="height:180px; width:100%; object-fit:contain"
+                                        onerror="this.onerror=null;this.src='image/ThuVien.jpg'">
+
+                                    <h6 class="mt-3">
+                                        ${esc(bookTitle(b))}
+                                    </h6>
+
+                                    <div class="text-primary fw-bold">
+                                        ${money(bookPrice(b))}
+                                    </div>
+
+                                    <a class="btn btn-outline-primary mt-2"
+                                       href="book.html?id=${encodeURIComponent(id)}">
+                                        Chi tiáº¿t
+                                    </a>
+
+                                    <button
+                                        type="button"
+                                        class="btn btn-outline-danger mt-2"
+                                        data-remove-favorite="${esc(String(id))}">
+                                        <i class="fas fa-heart-broken me-1"></i>
+                                        Bá» yÃªu thÃ­ch
+                                    </button>
+                                </div>
+                            </div>`;
+                    }).join('')
+                    || `<div class="col-12 text-center py-4">
+                            <i class="fas fa-heart fa-3x text-muted mb-3"></i>
+                            <p>Báº¡n chÆ°a cÃ³ sÃ¡ch yÃªu thÃ­ch.</p>
+                            <a href="shop.html" class="btn btn-primary rounded-pill">
+                                KhÃ¡m phÃ¡ sÃ¡ch
+                            </a>
+                        </div>`
+                }
+            </div>`;
+
+        // Xá»­ lÃ½ nÃºt bá» yÃªu thÃ­ch
+        document.querySelectorAll('[data-remove-favorite]')
+            .forEach(button => {
+                button.addEventListener('click', async () => {
+                    const maSach = button.dataset.removeFavorite;
+
+                    if (!confirm('Báº¡n cÃ³ muá»‘n bá» sÃ¡ch nÃ y khá»i danh sÃ¡ch yÃªu thÃ­ch?')) {
+                        return;
+                    }
+
+                    button.disabled = true;
+
+                    try {
+                        await request(
+                            '/sach-yeu-thich/' + encodeURIComponent(maSach),
+                            { method: 'DELETE' }
+                        );
+
+                        notice('ÄÃ£ bá» sÃ¡ch khá»i danh sÃ¡ch yÃªu thÃ­ch!');
+
+                        // Táº£i láº¡i danh sÃ¡ch sau khi xÃ³a
+                        await initFavorites();
+                    } catch (error) {
+                        button.disabled = false;
+                        notice(error.message || 'KhÃ´ng thá»ƒ bá» yÃªu thÃ­ch.');
+                    }
+                });
+            });
+
+    } catch (error) {
+        console.error('Lá»—i táº£i sÃ¡ch yÃªu thÃ­ch:', error);
+
+        $('#api-page-content .bg-light').innerHTML = `
+            <h2 class="mb-4 text-center">SÃ¡ch yÃªu thÃ­ch</h2>
+            <div class="alert alert-danger">
+                KhÃ´ng thá»ƒ táº£i danh sÃ¡ch sÃ¡ch yÃªu thÃ­ch:
+                ${esc(error.message || 'Lá»—i káº¿t ná»‘i API')}
+            </div>
+            <div class="text-center">
+                <button id="api-retry-favorites"
+                        class="btn btn-primary rounded-pill">
+                    Thá»­ láº¡i
+                </button>
+            </div>`;
+
+        document.getElementById('api-retry-favorites')
+            ?.addEventListener('click', initFavorites);
+    }
+}
+
+ 
+async function initOrders() {
+    formPage('Lá»‹ch sá»­ mua hÃ ng', '<p>Äang táº£i lá»‹ch sá»­ mua hÃ ng...</p>');
+
+    const container = $('#api-page-content .bg-light');
+
+    try {
+        const response = await request('/HoaDon/lich-su');
+        const data = unwrap(response);
+        const orders = Array.isArray(data) ? data : [];
+
+        container.innerHTML = `
+            <h2 class="mb-4 text-center">Lá»‹ch sá»­ mua hÃ ng</h2>
+
+            ${
+                orders.length > 0
+                    ? orders.map(order => `
+                        <div class="card mb-4 shadow-sm">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>MÃ£ hÃ³a Ä‘Æ¡n: #${esc(String(order.maHoaDon))}</strong>
+                                </div>
+                                <span class="badge ${
+                                    order.phuongThucThanhToan === 'ChuyenKhoan'
+                                        ? 'bg-primary'
+                                        : 'bg-success'
+                                }">
+                                    ${esc(
+                                        order.phuongThucThanhToan === 'ChuyenKhoan'
+                                            ? 'Chuyá»ƒn khoáº£n'
+                                            : order.phuongThucThanhToan
+                                    )}
+                                </span>
+                            </div>
+
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-6 mb-2">
+                                        <strong>NgÃ y láº­p:</strong>
+                                        ${esc(
+                                            order.ngayLap
+                                                ? new Date(order.ngayLap).toLocaleString('vi-VN')
+                                                : 'ChÆ°a cáº­p nháº­t'
+                                        )}
+                                    </div>
+
+                                    <div class="col-md-6 mb-2">
+                                        <strong>Sá»‘ Ä‘iá»‡n thoáº¡i:</strong>
+                                        ${esc(String(order.soDienThoai || 'ChÆ°a cáº­p nháº­t'))}
+                                    </div>
+
+                                    <div class="col-md-6 mb-2">
+                                        <strong>Äá»‹a chá»‰ nháº­n hÃ ng:</strong>
+                                        ${esc(String(order.diaChi || 'ChÆ°a cáº­p nháº­t'))}
+                                    </div>
+
+                                    <div class="col-md-6 mb-2">
+                                        <strong>Ghi chÃº:</strong>
+                                        ${esc(String(order.ghiChu || 'KhÃ´ng cÃ³'))}
+                                    </div>
+                                </div>
+
+                                <hr>
+
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="fw-bold">Tá»•ng tiá»n:</span>
+                                    <span class="text-danger fw-bold fs-5">
+                                        ${money(order.tongTien ?? 0)}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')
+                    : `
+                        <div class="text-center py-5">
+                            <p class="text-muted">Báº¡n chÆ°a cÃ³ Ä‘Æ¡n hÃ ng nÃ o.</p>
+                            <a href="shop.html" class="btn btn-primary">
+                                Tiáº¿p tá»¥c mua sáº¯m
+                            </a>
+                        </div>
+                    `
+            }
+        `;
+    } catch (error) {
+        console.error('Lá»—i táº£i lá»‹ch sá»­ mua hÃ ng:', error);
+
+        container.innerHTML = `
+            <div class="alert alert-danger">
+                KhÃ´ng thá»ƒ táº£i lá»‹ch sá»­ mua hÃ ng:
+                ${esc(error.message || 'ÄÃ£ xáº£y ra lá»—i')}
+            </div>
+        `;
+    }
+}
+
+ async function showBook(){const id=new URLSearchParams(location.search).get('id');if(!id)return;let b=state.books.find(x=>String(bookId(x))===String(id));if(!b)b=unwrap(await request('/sach/'+id));const main=$('#api-page-content')||(()=>{const x=document.createElement('div');x.id='api-page-content';x.className='container py-5';document.body.insertBefore(x,$('footer'));return x;})();main.innerHTML=`<div class="row g-5"><div class="col-md-5"><img class="img-fluid rounded" style="width:100%;max-height:520px;object-fit:contain" src="${esc(bookImage(b))}" onerror="this.src='image/ThuVien.jpg'"></div><div class="col-md-7"><h2>${esc(bookTitle(b))}</h2><h3 class="text-primary my-3">${money(bookPrice(b))}</h3><p>TÃ¡c giáº£: ${esc(b.tenTacGia??b.TenTacGia??'Äang cáº­p nháº­t')}</p><p>Thá»ƒ loáº¡i: ${esc(b.tenTheLoai??b.TenTheLoai??'')}</p><button class="btn btn-primary rounded-pill me-2" data-add-cart="${id}">ThÃªm vÃ o giá»</button><button class="btn btn-outline-danger rounded-pill" data-favorite="${id}">â™¡ YÃªu thÃ­ch</button><hr><h4>ÄÃ¡nh giÃ¡ sÃ¡ch</h4><div id="api-reviews">Äang táº£i Ä‘Ã¡nh giÃ¡...</div><form id="api-review-form" class="mt-3"><label class="form-label">Sá»‘ sao</label><select name="SoSao" class="form-select mb-2" required><option value="5">5 sao</option><option value="4">4 sao</option><option value="3">3 sao</option><option value="2">2 sao</option><option value="1">1 sao</option></select><textarea name="NoiDung" class="form-control mb-2" rows="3" placeholder="Ná»™i dung Ä‘Ã¡nh giÃ¡"></textarea><button class="btn btn-primary rounded-pill" type="submit">Gá»­i Ä‘Ã¡nh giÃ¡</button></form></div></div>`;
+   try{const d=await request('/danh-gia-sach/'+id);const list=Array.isArray(unwrap(d))?unwrap(d):[];$('#api-reviews').innerHTML=list.map(r=>`<div class="border rounded p-3 mb-2"><div class="text-warning">${'â˜…'.repeat(Number(r.soSao??r.SoSao??0))}</div><p class="mb-1">${esc(r.noiDung??r.NoiDung??'')}</p><small class="text-muted">${esc(r.ngayDanhGia??r.NgayDanhGia??'')}</small>${r.maDanhGia||r.MaDanhGia?` <button class="btn btn-sm btn-outline-primary" data-edit-review="${r.maDanhGia??r.MaDanhGia}" data-review-stars="${r.soSao??r.SoSao??5}" data-review-text="${esc(r.noiDung??r.NoiDung??'')}">Sá»­a</button> <button class="btn btn-sm btn-outline-danger" data-delete-review="${r.maDanhGia??r.MaDanhGia}">XÃ³a</button>`:''}</div>`).join('')||'<p>ChÆ°a cÃ³ Ä‘Ã¡nh giÃ¡.</p>';}catch(e){$('#api-reviews').textContent=e.message;}
+   bindForm('api-review-form',async fd=>{const payload={MaDanhGia:editingReviewId||0,MaSach:Number(id),SoSao:Number(fd.get('SoSao')),NoiDung:fd.get('NoiDung')};await request('/danh-gia-sach',{method:editingReviewId?'PUT':'POST',body:payload});editingReviewId=null;$('#api-review-form').reset();notice('ÄÃ£ lÆ°u Ä‘Ã¡nh giÃ¡');showBook();}); }
+
+
+ 
+
+
+async function initCheckout() {
+    const $id = id => document.getElementById(id);
+
+    const itemsElement = $id('api-checkout-items');
+    const subtotalElement = $id('api-checkout-subtotal');
+    const shippingElement = $id('api-checkout-shipping');
+    const totalElement = $id('api-checkout-total');
+    const placeOrderButton = $id('api-place-order');
+    const qrSection = $id('api-qr-section');
+    const qrImage = $id('api-qr-image');
+
+    if (!itemsElement || !placeOrderButton) {
+        console.error(
+            '[Checkout] KhÃ´ng tÃ¬m tháº¥y báº£ng giá» hÃ ng hoáº·c nÃºt Ä‘áº·t hÃ ng.'
+        );
+        return;
+    }
+
+    let checkoutItems = [];
+    let checkoutTotal = 0;
+    let isSubmitting = false;
+
+    // Láº¥y giÃ¡ trá»‹ tá»« nhiá»u kiá»ƒu ID/name cá»§a HTML.
+    const getValue = (...selectors) => {
+        for (const selector of selectors) {
+            const element = document.querySelector(selector);
+            if (element && element.value != null) {
+                return String(element.value).trim();
+            }
+        }
+        return '';
+    };
+
+    const getPaymentMethod = () => {
+        const selected = document.querySelector(
+            'input[name="paymentMethod"]:checked'
+        );
+
+        if (selected) {
+            const value = String(selected.value).toUpperCase();
+
+            if (value.includes('QR') || value.includes('VIETQR')) {
+                return 'VietQR';
+            }
+
+            if (value === 'COD') return 'COD';
+        }
+
+        if ($id('payment-qr')?.checked) return 'VietQR';
+        if ($id('payment-cod')?.checked) return 'COD';
+
+        return '';
+    };
+    
+
+    const showMessage = (message, type = 'info') => {
+        const result = $id('api-payment-result');
+
+        if (result) {
+            const cssClass = type === 'error'
+                ? 'alert-danger'
+                : type === 'success'
+                    ? 'alert-success'
+                    : 'alert-info';
+
+            result.innerHTML =
+                `<div class="alert ${cssClass}">${esc(message)}</div>`;
+        } else {
+            notice(message, type);
+        }
+    };
+
+    // áº¨n QR cÅ©.
+    if (qrSection) qrSection.hidden = true;
+    if (qrImage) qrImage.removeAttribute('src');
+
+    // áº¨n QR khi ngÆ°á»i dÃ¹ng Ä‘á»•i phÆ°Æ¡ng thá»©c.
+    document.querySelectorAll(
+        'input[name="paymentMethod"], #payment-cod, #payment-qr'
+    ).forEach(input => {
+        input.addEventListener('change', () => {
+            if (qrSection) qrSection.hidden = true;
+            if (qrImage) qrImage.removeAttribute('src');
+        });
+    });
+
+    // ==================================================
+    // 1. Táº¢I GIá»Ž HÃ€NG
+    // ==================================================
+    itemsElement.innerHTML = `
+        <tr>
+            <td colspan="5" class="text-center py-3">
+                Äang táº£i giá» hÃ ng...
+            </td>
+        </tr>`;
+
+    try {
+        const user = getUser();
+        let response;
+
+        if (user && idOf(user)) {
+            response = await request(
+                '/cart/customer/' + encodeURIComponent(idOf(user))
+            );
+        } else {
+            response = JSON.parse(
+                sessionStorage.getItem('apiq-guest-cart') || '[]'
+            );
+        }
+
+        const data = unwrap(response);
+
+        checkoutItems = Array.isArray(data)
+            ? data
+            : (
+                data?.items ??
+                data?.Items ??
+                data?.cart ??
+                data?.Cart ??
+                []
+            );
+
+        if (!checkoutItems.length) {
+            itemsElement.innerHTML = `
+                <tr>
+                    <td colspan="5" class="text-center py-3">
+                        Giá» hÃ ng Ä‘ang trá»‘ng.
+                        <a href="cart.html">Quay láº¡i giá» hÃ ng</a>
+                    </td>
+                </tr>`;
+
+            if (subtotalElement) subtotalElement.textContent = money(0);
+            if (shippingElement) shippingElement.textContent = money(0);
+            if (totalElement) totalElement.textContent = money(0);
+
+            placeOrderButton.disabled = true;
+            return;
+        }
+
+        checkoutTotal = 0;
+
+        itemsElement.innerHTML = checkoutItems.map(item => {
+            const name = cName(item);
+            const quantity = Number(cQty(item)) || 1;
+            const price = Number(cPrice(item)) || 0;
+
+            const lineTotal = Number(
+                item.thanhTien ??
+                item.ThanhTien ??
+                item.total ??
+                item.Total ??
+                price * quantity
+            );
+
+            checkoutTotal += lineTotal;
+
+            return `
+                <tr>
+                    <td>${esc(name)}</td>
+                    <td class="text-end">${money(price)}</td>
+                    <td class="text-center">${quantity}</td>
+                    <td class="text-end">${money(lineTotal)}</td>
+                </tr>`;
+        }).join('');
+
+        const shipping = 0;
+        const finalTotal = checkoutTotal + shipping;
+
+        if (subtotalElement) {
+            subtotalElement.textContent = money(checkoutTotal);
+        }
+
+        if (shippingElement) {
+            shippingElement.textContent = money(shipping);
+        }
+
+        if (totalElement) {
+            totalElement.textContent = money(finalTotal);
+        }
+
+        console.log('[Checkout] Giá» hÃ ng:', checkoutItems);
+        console.log('[Checkout] Tá»•ng tiá»n:', finalTotal);
+
+        const currentUser = getUser();
+
+        console.log('[Checkout] User hiá»‡n táº¡i:', currentUser);
+        console.log(
+            '[Checkout] MÃ£ khÃ¡ch hÃ ng:',
+            currentUser ? idOf(currentUser) : null
+        );
+        console.log(
+            '[Checkout] Giá» hÃ ng trong sessionStorage:',
+            sessionStorage.getItem('apiq-guest-cart')
+        );
+
+    } catch (error) {
+        console.error('[Checkout] Lá»—i táº£i giá» hÃ ng:', error);
+
+        itemsElement.innerHTML = `
+            <tr>
+                <td colspan="5" class="text-center text-danger py-3">
+                    ${esc(error.message)}
+                </td>
+            </tr>`;
+
+        placeOrderButton.disabled = true;
+        return;
+    }
+
+    // ==================================================
+    // 2. Xá»¬ LÃ Äáº¶T HÃ€NG
+    // ==================================================
+    placeOrderButton.onclick = async function (event) {
+        event?.preventDefault();
+
+        if (isSubmitting) return;
+
+        const method = getPaymentMethod();
+
+        if (!method) {
+            showMessage(
+                'Vui lÃ²ng chá»n phÆ°Æ¡ng thá»©c thanh toÃ¡n.',
+                'error'
+            );
+            return;
+        }
+
+        if (!checkoutItems.length) {
+            showMessage('Giá» hÃ ng Ä‘ang trá»‘ng.', 'error');
+            return;
+        }
+
+        // Láº¥y thÃ´ng tin tá»« cÃ¡c Ã´ nháº­p.
+        const tenNguoiNhan = getValue(
+            '[name="TenNguoiNhan"]',
+            '#TenNguoiNhan',
+            '[name="tenNguoiNhan"]',
+            '#checkout-name',
+            '[name="firstName"]'
+        );
+
+        const soDienThoai = getValue(
+            '[name="SoDienThoai"]',
+            '#SoDienThoai',
+            '[name="soDienThoai"]',
+            '#checkout-phone',
+            '[name="phone"]'
+        );
+
+        const diaChi = getValue(
+            '[name="DiaChi"]',
+            '#DiaChi',
+            '[name="diaChi"]',
+            '#checkout-address',
+            '[name="address"]'
+        );
+
+        const ghiChu = getValue(
+            '[name="GhiChu"]',
+            '#GhiChu',
+            '[name="ghiChu"]',
+            '[name="note"]'
+        );
+
+        const maGiamGia = getValue(
+            '[name="MaGiamGia"]',
+            '#MaGiamGia'
+        );
+
+        // Kiá»ƒm tra trÆ°á»›c khi gá»i API.
+        if (!tenNguoiNhan || !soDienThoai || !diaChi) {
+            showMessage(
+                'Vui lÃ²ng nháº­p Ä‘áº§y Ä‘á»§ tÃªn ngÆ°á»i nháº­n, sá»‘ Ä‘iá»‡n thoáº¡i vÃ  Ä‘á»‹a chá»‰ giao hÃ ng.',
+                'error'
+            );
+            return;
+        }
+
+        // KhÃ´ng log máº­t kháº©u hoáº·c dá»¯ liá»‡u nháº¡y cáº£m.
+        console.log('[Checkout] ThÃ´ng tin giao hÃ ng:', {
+            tenNguoiNhan,
+            soDienThoai,
+            diaChi,
+            phuongThuc: method
+        });
+
+        isSubmitting = true;
+        placeOrderButton.disabled = true;
+
+        const originalText = placeOrderButton.textContent;
+        placeOrderButton.textContent = 'Äang táº¡o hÃ³a Ä‘Æ¡n...';
+
+        if (qrSection) qrSection.hidden = true;
+        if (qrImage) qrImage.removeAttribute('src');
+
+        try {
+            // ==================================================
+            // 3. Gá»¬I YÃŠU Cáº¦U Táº O HÃ“A ÄÆ N
+            // ==================================================
+            const payload = {
+                TenNguoiNhan: tenNguoiNhan,
+                SoDienThoai: soDienThoai,
+                DiaChi: diaChi,
+                GhiChu: ghiChu,
+                PhuongThucThanhToan: method === 'VietQR'
+                ? 'ChuyenKhoan'
+                : 'COD',
+                MaGiamGia: maGiamGia
+            };
+
+            console.log('[Checkout] Payload:', payload);
+
+            const response = await request('/thanh-toan', {
+                method: 'POST',
+                body: payload
+            });
+
+            const invoice = unwrap(response) || {};
+
+            const invoiceId =
+                invoice.maHoaDon ??
+                invoice.MaHoaDon ??
+                invoice.maHD ??
+                invoice.MaHD ??
+                invoice.id ??
+                invoice.Id;
+
+            const amount = Number(
+                invoice.tongTien ??
+                invoice.TongTien ??
+                invoice.total ??
+                invoice.Total ??
+                checkoutTotal
+            );
+
+            if (invoiceId == null || invoiceId === '') {
+                console.error(
+                    '[Checkout] API khÃ´ng tráº£ mÃ£ hÃ³a Ä‘Æ¡n:',
+                    invoice
+                );
+
+                throw new Error(
+                    'KhÃ´ng nháº­n Ä‘Æ°á»£c mÃ£ hÃ³a Ä‘Æ¡n tá»« API. ' +
+                    'HÃ£y kiá»ƒm tra pháº£n há»“i cá»§a POST /thanh-toan.'
+                );
+            }
+
+            // ==================================================
+            // 4. THANH TOÃN KHI NHáº¬N HÃ€NG
+            // ==================================================
+            if (method === 'COD') {
+                if (qrSection) qrSection.hidden = true;
+
+                showMessage(
+                    `Äáº·t hÃ ng thÃ nh cÃ´ng! MÃ£ hÃ³a Ä‘Æ¡n: ${invoiceId}. ` +
+                    `Tá»•ng tiá»n: ${money(amount)}. ` +
+                    'Báº¡n sáº½ thanh toÃ¡n khi nháº­n hÃ ng.',
+                    'success'
+                );
+
+                return;
+            }
+
+            // ==================================================
+            // 5. THANH TOÃN Báº°NG QR
+            // ==================================================
+            const qr = await getVietQR(amount, invoiceId);
+
+            if (!qr) {
+                const qrResponse = await request(
+                    '/vietqr/test?amount=' +
+                    encodeURIComponent(amount) +
+                    '&maHoaDon=' +
+                    encodeURIComponent(invoiceId)
+                );
+
+                const qrData = unwrap(qrResponse) || {};
+
+                qr =
+                    qrData.qrCode ??
+                    qrData.QRCode ??
+                    qrData.qrUrl ??
+                    qrData.QRUrl ??
+                    qrData.paymentUrl ??
+                    qrData.PaymentUrl;
+            }
+
+            if (!qr) {
+                throw new Error(
+                    `HÃ³a Ä‘Æ¡n ${invoiceId} Ä‘Ã£ táº¡o nhÆ°ng khÃ´ng láº¥y Ä‘Æ°á»£c QR. ` +
+                    'HÃ£y kiá»ƒm tra API VietQR trÆ°á»›c khi táº¡o láº¡i hÃ³a Ä‘Æ¡n.'
+                );
+            }
+
+            if (qrImage) {
+                qrImage.src = qr;
+                qrImage.alt = `MÃ£ QR thanh toÃ¡n hÃ³a Ä‘Æ¡n ${invoiceId}`;
+            }
+
+            if (qrSection) {
+                qrSection.hidden = false;
+            } else {
+                const result = $id('api-payment-result');
+
+                if (result) {
+                    result.insertAdjacentHTML(
+                        'beforeend',
+                        '<div id="api-qr-section" class="text-center mt-4">' +
+                        '<p>QuÃ©t mÃ£ QR Ä‘á»ƒ thanh toÃ¡n</p>' +
+                        '<img id="api-qr-image" alt="MÃ£ QR thanh toÃ¡n" ' +
+                        'style="max-width:300px;width:100%">' +
+                        '</div>'
+                    );
+
+                    $id('api-qr-image').src = qr;
+                }
+            }
+
+            showMessage(
+                `ÄÃ£ táº¡o hÃ³a Ä‘Æ¡n ${invoiceId}. ` +
+                `Tá»•ng tiá»n: ${money(amount)}. Vui lÃ²ng quÃ©t mÃ£ QR.`,
+                'success'
+            );
+
+        } catch (error) {
+            console.error('[Checkout] Lá»—i Ä‘áº·t hÃ ng:', error);
+
+            showMessage(
+                error.message || 'KhÃ´ng thá»ƒ táº¡o hÃ³a Ä‘Æ¡n.',
+                'error'
+            );
+
+        } finally {
+            isSubmitting = false;
+            placeOrderButton.disabled = false;
+            placeOrderButton.textContent = originalText;
+        }
+    };
+}
+
+
+ async function initContact(){const form=$('form');if(!form||$('#api-contact-form'))return;form.id='api-contact-form';}
+ document.addEventListener('click',async e=>{const add = e.target.closest('[data-add-cart]');
+
+if (add) {
+    e.preventDefault();
+
+    const id = Number(add.dataset.addCart);
+
+    let book = state.books.find(
+        x => Number(
+            x.maSach ?? x.MaSach ?? x.id ?? x.Id
+        ) === id
+    );
+
+    if (!book) {
+        try {
+            book = unwrap(await request('/sach/' + id));
+        } catch (error) {
+            console.error('Lá»—i láº¥y thÃ´ng tin sÃ¡ch:', error);
+            notice('KhÃ´ng táº£i Ä‘Æ°á»£c thÃ´ng tin sÃ¡ch.', 'error');
+            return;
+        }
+    }
+
+    if (!book) {
+        notice('KhÃ´ng tÃ¬m tháº¥y sÃ¡ch.', 'error');
+        return;
+    }
+
+    await handleAddBookToCart(book);
+    return;
+}const fav=e.target.closest('[data-favorite]');if(fav){e.preventDefault();try{await request('/sach-yeu-thich/'+fav.dataset.favorite,{method:'POST'});notice('ÄÃ£ thÃªm vÃ o yÃªu thÃ­ch');}catch(err){notice(err.message,'error');}return;}const qty=e.target.closest('[data-qty]');if(qty){changeQty(qty.dataset.qty,Number(qty.dataset.delta));return;}const rem=e.target.closest('[data-remove-cart]');if(rem){removeCart(rem.dataset.removeCart);return;}const rf=e.target.closest('[data-remove-favorite]');if(rf){try{await request('/sach-yeu-thich/'+rf.dataset.removeFavorite,{method:'DELETE'});notice('ÄÃ£ bá» yÃªu thÃ­ch');initFavorites();}catch(err){notice(err.message,'error');}return;}const od=e.target.closest('[data-order-detail]');if(od){try{const d=unwrap(await request('/HoaDon/chi-tiet/'+od.dataset.orderDetail));$('#api-order-detail').innerHTML=`<h5 class="mt-4">Chi tiáº¿t hÃ³a Ä‘Æ¡n #${od.dataset.orderDetail}</h5><pre class="bg-white p-3 rounded">${esc(JSON.stringify(d,null,2))}</pre>`;}catch(err){notice(err.message,'error');}return;}const er=e.target.closest('[data-edit-review]');if(er){editingReviewId=Number(er.dataset.editReview);const f=$('#api-review-form');if(f){f.elements.SoSao.value=er.dataset.reviewStars;f.elements.NoiDung.value=er.dataset.reviewText;f.scrollIntoView({behavior:'smooth',block:'center'});f.querySelector('[type=submit]').textContent='Cáº­p nháº­t Ä‘Ã¡nh giÃ¡';}return;}const dr=e.target.closest('[data-delete-review]');if(dr){try{await request('/danh-gia-sach/'+dr.dataset.deleteReview,{method:'DELETE'});notice('ÄÃ£ xÃ³a Ä‘Ã¡nh giÃ¡');showBook();}catch(err){notice(err.message,'error');}}});
+ document.addEventListener('DOMContentLoaded', async()=>{
+   state.user=getUser();updateNav();
+   // inject book-grid mounts without modifying the template's original styling/assets
+   
+if (
+    location.pathname.endsWith('/shop.html') ||
+    location.pathname.endsWith('shop.html')
+) {
+    const anchor =
+        $('.container-fluid.product.py-5') ||
+        $('.container.py-5');
+
+    // Sá»­ dá»¥ng Ã´ tÃ¬m kiáº¿m cÃ³ sáºµn trong template
+    const search = $('#api-book-search');
+
+    if (search) {
+        search.placeholder = 'Nháº­p tÃªn sÃ¡ch cáº§n tÃ¬m...';
+    }
+
+    if (anchor && !$('#api-books-grid')) {
+        const grid = document.createElement('div');
+        grid.className = 'container py-4';
+
+        grid.innerHTML = `
+            <p id="api-book-status" class="text-muted"></p>
+            <div class="row" id="api-books-grid"></div>
+        `;
+
+        anchor.before(grid);
+    }
+}
+
+
+   if(location.pathname.endsWith('/index.html')||location.pathname.endsWith('/')||location.pathname===''){const anchor=$('.container-fluid.product.py-5');if(anchor){const grid=document.createElement('div');grid.className='container py-4';grid.innerHTML='<h2 class="mb-4">SÃ¡ch ná»•i báº­t</h2><div class="row" id="api-books-home"></div>';anchor.before(grid);}}
+   if (location.pathname.endsWith('cart.html')) {
+    const tbody = document.querySelector('#api-cart-body');
+
+    if (tbody) {
+        renderGuestCart();
+    }
+}
+    bindBookViewMode();setupPriceFilter();
+   await loadCart(); await loadBooks();await loadBookCategories();
+   if(location.pathname.endsWith('login.html'))initLogin();
+   if(location.pathname.endsWith('register.html'))initRegister();
+   if(location.pathname.endsWith('verify-otp.html'))initOtp();
+   if(location.pathname.endsWith('profile.html')){try{await initProfile()}catch(e){notice(e.message,'error');}}
+   if(location.pathname.endsWith('favorites.html')){try{await initFavorites()}catch(e){notice(e.message,'error');}}
+   if(location.pathname.endsWith('orders.html')){try{await initOrders()}catch(e){notice(e.message,'error');}}
+   if(location.pathname.endsWith('book.html')){try{await showBook()}catch(e){notice(e.message,'error');}}
+   if (location.pathname.endsWith('checkout.html')) {
+    console.log('[Checkout] ÄÃ£ nháº­n diá»‡n trang thanh toÃ¡n');
+
+    try {
+        await initCheckout();
+    } catch (e) {
+        console.error('[Checkout] Lá»—i khá»Ÿi táº¡o:', e);
+        notice(e.message, 'error');
+    }
+}
+ });
+})();
+
+
+========== API\Controllers\KhachHangController.cs ==========
+using API.Data;
+using API.Dtos;
+using API.Extension;
+using API.Models;
+using API.RepositoryService.Service;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+namespace API.Controllers
+{
+    [Route("api/[controller]")]
+    [ApiController]
+    public class KhachHangController : ControllerBase
+    {
+        private readonly IKhachHangServices
+            _khachHangServices;
+
+        private readonly QlbanSachContext
+            _context;
+
+
+        public KhachHangController(
+            IKhachHangServices khachHangServices,
+            QlbanSachContext context)
+        {
+            _khachHangServices =
+                khachHangServices;
+
+            _context = context;
+        }
+
+
+        // =========================================================
+        // ADMIN - DANH SÁCH KHÁCH HÀNG
+        // =========================================================
+
+        [HttpGet("DanhSachTaiKhoan")]
+        [AdminOnly]
+        public async Task<IActionResult>
+            DanhSachTaiKhoan()
+        {
+            try
+            {
+                var result =
+                    await _khachHangServices
+                        .GetListAsync();
+
+
+                return Ok(
+                    ApiResponse<
+                        IEnumerable<KhachHangResponseDTO>
+                    >.Ok(
+                        result,
+                        "Lấy danh sách khách hàng thành công!"
+                    )
+                );
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(
+                    ApiResponse<object>.Fail(
+                        ex.Message
+                    )
+                );
+            }
+        }
+
+
+        // =========================================================
+        // ADMIN - LẤY KHÁCH HÀNG THEO ID
+        // =========================================================
+
+        [HttpGet("{id}")]
+        [AdminOnly]
+        public async Task<IActionResult>
+            GetById(int id)
+        {
+            try
+            {
+                var result =
+                    await _khachHangServices
+                        .GetByIdAsync(id);
+
+
+                if (result == null)
+                {
+                    return NotFound(
+                        ApiResponse<object>.Fail(
+                            "Không tìm thấy khách hàng!"
+                        )
+                    );
+                }
+
+
+                return Ok(
+                    ApiResponse<
+                        KhachHangResponseDTO
+                    >.Ok(
+                        result,
+                        "Lấy thông tin khách hàng thành công!"
+                    )
+                );
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(
+                    ApiResponse<object>.Fail(
+                        ex.Message
+                    )
+                );
+            }
+        }
+
+
+        // =========================================================
+        // ĐĂNG KÝ
+        // =========================================================
+
+        [HttpPost("signin")]
+        public async Task<IActionResult>
+            SighIn(
+                [FromBody] SighInDTO dto)
+        {
+            try
+            {
+                var result =
+                    await _khachHangServices
+                        .SighIn(dto);
+
+
+                return Ok(
+                    ApiResponse<
+                        RegisterResponseDTO
+                    >.Ok(
+                        result,
+                        "Đăng ký thành công! OTP đã được gửi vào email."
+                    )
+                );
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(
+                    ApiResponse<object>.Fail(
+                        ex.Message
+                    )
+                );
+            }
+        }
+
+
+        // =========================================================
+        // ĐĂNG NHẬP
+        // =========================================================
+
+        [HttpPost("login")]
+        public async Task<IActionResult> Login([FromBody] LogInDTO dto)
+        {
+            try
+            {
+                var result = await _khachHangServices.Login(dto);
+
+                // Lấy mã khách hàng từ kết quả xác thực trong service
+                HttpContext.Session.SetInt32(
+                    mySetting.MaKhachHang,
+                    result.MaKhachHang
+                );
+
+                return Ok(
+                    ApiResponse<LoginResponseDTO>.Ok(
+                        result,
+                        "Đăng nhập thành công!"
+                    )
+                );
+            }
+            catch (Exception ex)
+            {
+                return Unauthorized(
+                    ApiResponse<object>.Fail(ex.Message)
+                );
+            }
+        }
+
+
+        // =========================================================
+        // ĐĂNG XUẤT
+        // =========================================================
+
+        [HttpPost("logout")]
+        public async Task<IActionResult>
+            Logout()
+        {
+            try
+            {
+                await _khachHangServices
+                    .Logout();
+
+
+                return Ok(
+                    ApiResponse<object>.Ok(
+                        null,
+                        "Đăng xuất thành công!"
+                    )
+                );
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(
+                    ApiResponse<object>.Fail(
+                        ex.Message
+                    )
+                );
+            }
+        }
+
+
+        // =========================================================
+        // XÁC THỰC OTP
+        // =========================================================
+
+        [HttpPost("verify-otp/{maKhachHang}")]
+        public async Task<IActionResult>
+            VerifyOTP(
+                int maKhachHang,
+                [FromBody] VerifyOTPDTO dto)
+        {
+            try
+            {
+                var result =
+                    await _khachHangServices
+                        .VerifyOTPAsync(
+                            maKhachHang,
+                            dto.OTP);
+
+
+                if (!result)
+                {
+                    return BadRequest(
+                        ApiResponse<object>.Fail(
+                            "OTP không đúng hoặc đã hết hạn!"
+                        )
+                    );
+                }
+
+
+                return Ok(
+                    ApiResponse<object>.Ok(
+                        null,
+                        "Xác thực email thành công!"
+                    )
+                );
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(
+                    ApiResponse<object>.Fail(
+                        ex.Message
+                    )
+                );
+            }
+        }
+
+
+        // =========================================================
+        // GỬI LẠI OTP
+        // =========================================================
+
+        [HttpPost("resend-otp/{maKhachHang}")]
+        public async Task<IActionResult>
+            ResendOTP(int maKhachHang)
+        {
+            try
+            {
+                var result =
+                    await _khachHangServices
+                        .ResendOTPAsync(
+                            maKhachHang);
+
+
+                if (!result)
+                {
+                    return BadRequest(
+                        ApiResponse<object>.Fail(
+                            "Không thể gửi lại OTP. Tài khoản không tồn tại hoặc đã được xác thực!"
+                        )
+                    );
+                }
+
+
+                return Ok(
+                    ApiResponse<object>.Ok(
+                        null,
+                        "OTP mới đã được gửi vào email!"
+                    )
+                );
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(
+                    ApiResponse<object>.Fail(
+                        ex.Message
+                    )
+                );
+            }
+        }
+
+
+        // =========================================================
+        // XEM THÔNG TIN CÁ NHÂN
+        // =========================================================
+
+        [HttpGet("my-info")]
+        public async Task<IActionResult>
+            GetMyInfo()
+        {
+            try
+            {
+                var maKH =
+                    HttpContext.Session
+                        .GetInt32(
+                            mySetting.MaKhachHang);
+
+
+                if (!maKH.HasValue)
+                {
+                    return Unauthorized(
+                        ApiResponse<object>.Fail(
+                            "Bạn chưa đăng nhập!"
+                        )
+                    );
+                }
+
+
+                var khachHang =
+                    await _context.KhachHangs
+                        .FirstOrDefaultAsync(
+                            x =>
+                                x.MaKhachHang ==
+                                maKH.Value);
+
+
+                if (khachHang == null)
+                {
+                    return Unauthorized(
+                        ApiResponse<object>.Fail(
+                            "Không tìm thấy khách hàng!"
+                        )
+                    );
+                }
+
+
+                if (!khachHang.IsVerified)
+                {
+                    return StatusCode(
+                        StatusCodes.Status403Forbidden,
+
+                        ApiResponse<object>.Fail(
+                            "Bạn cần xác thực email trước khi xem thông tin cá nhân!"
+                        )
+                    );
+                }
+
+
+                var result =
+                    await _khachHangServices
+                        .GetMyInfo();
+
+
+                return Ok(
+                    ApiResponse<
+                        KhachHangResponseDTO
+                    >.Ok(
+                        result,
+                        "Lấy thông tin cá nhân thành công!"
+                    )
+                );
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(
+                    ApiResponse<object>.Fail(
+                        ex.Message
+                    )
+                );
+            }
+        }
+
+
+        // =========================================================
+        // SỬA THÔNG TIN CÁ NHÂN
+        // =========================================================
+
+        [HttpPut("my-info")]
+        public async Task<IActionResult> UpdateMyInfo(
+    [FromBody] ThongTinKhachHangDTO dto)
+        {
+            try
+            {
+                var maKH =
+                    HttpContext.Session
+                        .GetInt32(
+                            mySetting.MaKhachHang);
+
+
+                if (!maKH.HasValue)
+                {
+                    return Unauthorized(
+                        ApiResponse<object>.Fail(
+                            "Bạn chưa đăng nhập!"
+                        )
+                    );
+                }
+
+
+                var khachHang =
+                    await _context.KhachHangs
+                        .FirstOrDefaultAsync(
+                            x =>
+                                x.MaKhachHang ==
+                                maKH.Value);
+
+
+                if (khachHang == null)
+                {
+                    return Unauthorized(
+                        ApiResponse<object>.Fail(
+                            "Không tìm thấy khách hàng!"
+                        )
+                    );
+                }
+
+
+                if (!khachHang.IsVerified)
+                {
+                    return StatusCode(
+                        StatusCodes.Status403Forbidden,
+
+                        ApiResponse<object>.Fail(
+                            "Bạn cần xác thực email trước khi chỉnh sửa thông tin!"
+                        )
+                    );
+                }
+
+
+                var result =
+                    await _khachHangServices
+                        .UpdateMyInfo(dto);
+
+
+                return Ok(
+                    ApiResponse<
+                        KhachHangResponseDTO
+                    >.Ok(
+                        result,
+                        "Cập nhật thông tin thành công!"
+                    )
+                );
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(
+                    ApiResponse<object>.Fail(
+                        ex.Message
+                    )
+                );
+            }
+        }
+    }
+}
+
+========== API\Extension\AdminOnlyAttribute.cs ==========
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
+
+namespace API.Extension
+{
+    public class AdminOnlyAttribute : Attribute, IAuthorizationFilter
+    {
+        public void OnAuthorization(AuthorizationFilterContext context)
+        {
+            var session = context.HttpContext.Session;
+
+            var role = session.GetString(mySetting.Role);
+
+            if (string.IsNullOrEmpty(role))
+            {
+                context.Result = new UnauthorizedObjectResult(new
+                {
+                    success = false,
+                    message = "Bạn chưa đăng nhập!"
+                });
+
+                return;
+            }
+
+            if (role != "Admin")
+            {
+                context.Result = new ObjectResult(new
+                {
+                    success = false,
+                    message = "Bạn không có quyền Admin!"
+                })
+                {
+                    StatusCode = StatusCodes.Status403Forbidden
+                };
+            }
+        }
+    }
+}
+
+========== API\Properties\launchSettings.json ==========
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "http": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:5008",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "https": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "https://localhost:7091;http://localhost:5008",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}
+
